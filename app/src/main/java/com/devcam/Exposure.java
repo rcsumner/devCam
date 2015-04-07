@@ -1,3 +1,14 @@
+/* Exposure objects represent a single photographic exposure, based on the set of parameters that
+ * define one in the eyes of devCam. These include:
+ * - exposure time
+ * - sensitivity (ISO)
+ * - aperture
+ * - focal length
+ * - focus distance
+ *
+ * Every other property of an output frame is considered an image property, not a photographic one.
+ */
+
 package com.devcam;
 
 import android.hardware.camera2.CaptureResult;
@@ -31,7 +42,16 @@ public class Exposure {
 		mFocalLength = cr.get(CaptureResult.LENS_FOCAL_LENGTH);
 		mFocusDistance = cr.get(CaptureResult.LENS_FOCUS_DISTANCE);
 	}
+    // - - - - -  end constructors - - - - -
 
+    // String form just simply displays the parameters readably
+    @Override
+    public String toString(){
+        return "f" + mAperture + ", " + CameraReport.nsToMs(mExposureTime)
+                + ", ISO " + mSensitivity + ", "
+                + mFocalLength + "mm, focus: "
+                + CameraReport.diopterToMeters(mFocusDistance);
+    }
 
 	// - - - - - Setters and Getters - - - - -
 	public Long getExposureTime() {
@@ -64,14 +84,4 @@ public class Exposure {
 	public void setFocusDistance(Float mFocusDistance) {
 		this.mFocusDistance = mFocusDistance;
 	}
-
-
-	@Override
-	public String toString(){
-		return "f" + mAperture + ", " + CameraReport.nsToMs(mExposureTime)
-				+ ", ISO " + mSensitivity + ", " 
-				+ mFocalLength + "mm, focus: " 
-				+ CameraReport.diopterToMeters(mFocusDistance);
-	}
-
 }

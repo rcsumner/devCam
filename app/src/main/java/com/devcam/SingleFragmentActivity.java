@@ -1,3 +1,8 @@
+/* Standard practice for Android apps seems to be to refrain from using an Activity directly as the
+ * main layout and to instead use it to host a single Fragment. Here we keep up this practice,
+ * perhaps it will pay off in making things more adjustable in the future.
+ */
+
 package com.devcam;
 
 import android.app.ActionBar;

@@ -5,6 +5,7 @@ import android.app.Fragment;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.ImageFormat;
+import android.graphics.Paint;
 import android.graphics.Point;
 import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCaptureSession;
@@ -446,7 +447,13 @@ public class appFragment extends Fragment {
             // Restore the preview image now that the CaptureDesign
             // capture sequence is over.
             try{
-                mCaptureSession.stopRepeating(); // Just in case some other repeating request still exists
+                // Explicitly unlock AE and set AF back to idle, in case last capture design locked them.
+                mPreviewCRB.set(CaptureRequest.CONTROL_AE_LOCK,false);
+                mPreviewCRB.set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_CANCEL);
+                mCaptureSession.capture(mPreviewCRB.build(), previewCCB, mBackgroundHandler);
+
+                // Now let the repeating normal (non-AF-canceling) preview request run.
+                mPreviewCRB.set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_IDLE);
                 mCaptureSession.setRepeatingRequest(mPreviewCRB.build(), previewCCB, mBackgroundHandler);
             } catch (CameraAccessException cae){
                 cae.printStackTrace();

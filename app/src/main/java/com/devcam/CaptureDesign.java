@@ -155,7 +155,8 @@ public class CaptureDesign {
         Log.v(appFragment.APP_TAG,"- - - - - Capturing Exposure Sequence as a Burst.");
         List<CaptureRequest> burstRequests= new ArrayList<CaptureRequest>();
 
-        // Ensure that a new AE/AF search will not be started
+        // Ensure that a new AE/AF search will not be started, and that AE is locked
+        mCaptureCRB.set(CaptureRequest.CONTROL_AE_LOCK,true);
         mCaptureCRB.set(CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER, CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER_IDLE);
         mCaptureCRB.set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_IDLE);
 
@@ -235,7 +236,8 @@ public class CaptureDesign {
                 mCaptureCRB.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_OFF);
                 mCaptureCRB.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_OFF);
 
-                // If all of manually-set parameters are to be used, just capture the burst, stat.
+                // If all of manually-set parameters are to be used, just capture the burst, stat,
+                // using the current exposure and focus values.
                 if (mAFsetting == MANUAL && mAEsetting == MANUAL){
                     captureSequenceBurst();
                     return;
@@ -332,19 +334,20 @@ public class CaptureDesign {
             // If either Auto process was being used for only the first frame, let us now just
             // post a burst capture since the state is converged
             if (mAEsetting != AUTO_ALL && mAFsetting != AUTO_ALL){
+
                 captureSequenceBurst();
                 return;
             }
 
             // Otherwise, at least one auto process will be recurring for all frames, so only
             // capture the next frame with this converged state, and then let another
-            // converging process begin
+            // converging process begin in the onCaptureCompleted() callback
             try {
-                    //Exposure settings have already been set for mCaptureCRB.
-                    // Ensure that a new AE/AF search will not be started
+                    // Exposure settings have already been set for mCaptureCRB.
+                    // Ensure that a new AE/AF search will not be started, and that AE is locked
                     mCaptureCRB.set(CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER, CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER_IDLE);
                     mCaptureCRB.set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_IDLE);
-
+                    mCaptureCRB.set(CaptureRequest.CONTROL_AE_LOCK,true);
                     mSession.capture(mCaptureCRB.build(),frameCCB,mBackgroundHandler);
 
                 // This approach of starting a new capture instead of just using the current result
@@ -392,10 +395,17 @@ public class CaptureDesign {
             // If we are using an auto-process for all exposures, post the next one to start converging
             if (mAEsetting == AUTO_ALL || mAFsetting == AUTO_ALL) {
                 Log.v(appFragment.APP_TAG,"Still using Auto-something, so posting next convergence trail.");
+                // Set the parameters of the next capture according to the desired settings, to be
+                // disregarded as necessary, or actually used if not overwritten
                 updateCRB();
+
+                // Since we are concerned with AF convergence first, then AE, we set the state in
+                // the reverse order so that it can step "backwards" only when needed.
 
                 if (mAEsetting ==AUTO_ALL){
                     autoState = WAITING_FOR_AE;
+                    // unlock AE and trigger it again
+                    mCaptureCRB.set(CaptureRequest.CONTROL_AE_LOCK,false);
                     mCaptureCRB.set(CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER, CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER_START);
                 }
 
@@ -573,6 +583,10 @@ public class CaptureDesign {
     }
 
 } // End whole class
+
+
+
+// - - - - - - The old way of doing things. May be useful to return to some day, or reuse - - - - -
 
 
 
