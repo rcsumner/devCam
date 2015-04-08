@@ -183,6 +183,28 @@ public class CaptureDesign {
     }
 
 
+    void fillAutoValues(CaptureResult autoResult){
+        for (Exposure exp : mExposures){
+            if (exp.getAperture()<0){
+                exp.setAperture(autoResult.get(CaptureResult.LENS_APERTURE));
+            }
+            if (exp.getExposureTime()<0){
+                exp.setExposureTime(autoResult.get(CaptureResult.SENSOR_EXPOSURE_TIME));
+            }
+            if (exp.getFocalLength()<0){
+                exp.setFocalLength(autoResult.get(CaptureResult.LENS_FOCAL_LENGTH));
+            }
+            if (exp.getFocusDistance()<0){
+                exp.setFocusDistance(autoResult.get(CaptureResult.LENS_FOCUS_DISTANCE));
+            }
+            if (exp.getSensitivity()<0){
+                exp.setSensitivity(autoResult.get(CaptureResult.SENSOR_SENSITIVITY));
+            }
+        }
+    }
+
+
+
     /* void startCapture(CameraDevice,CameraCaptureSession,output Surface,preview Surface,Handler)
      *
      * Begins the capture process by passing the necessary objects for this class to communicate
@@ -207,7 +229,8 @@ public class CaptureDesign {
                              CameraCaptureSession session,
                              Surface outputSurface,
                              Surface previewSurface,
-                             Handler backgroundHandler){
+                             Handler backgroundHandler,
+                             CaptureResult autoResult){
 
         mSession = session;
         mBackgroundHandler = backgroundHandler;
@@ -217,6 +240,9 @@ public class CaptureDesign {
             Log.v(appFragment.APP_TAG,"No Exposures in list to capture!");
             return;
         }
+
+        // Now see if the exposure parameters should be derived from the AE/AF values or not
+        fillAutoValues(autoResult);
 
         mNumCaptured = 0;
         mExposureIt = mExposures.iterator();

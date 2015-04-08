@@ -692,10 +692,20 @@ final public class CameraReport {
 
     // Little conversion function to correctly format time units from
     // long value in ns to string representing ms.
-    static public String nsToMs(long l){
-        l = l/1000000;
+    static public String nsToString(long ns){
+        String units;
+        if (ns>=1000000){
+            ns = ns/1000000;
+            units = "ms";
+        } else if (ns>=1000) {
+            ns = ns/1000;
+            units = Character.toChars(956)[0]+"s";
+        } else {
+            units = "ns";
+        }
+
         DecimalFormat df = new DecimalFormat("@@@");
-        return df.format(l) + " ms";
+        return df.format(ns) + units;
     }
 
     // Little conversion function to correctly format diopter units

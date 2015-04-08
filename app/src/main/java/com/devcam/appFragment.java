@@ -5,7 +5,6 @@ import android.app.Fragment;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.ImageFormat;
-import android.graphics.Paint;
 import android.graphics.Point;
 import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCaptureSession;
@@ -547,10 +546,10 @@ public class appFragment extends Fragment {
         mCaptureDesignListView.setAdapter(mCaptureDesignAdapter);
 
         // Update text fields indicating the time constraints for these settings
-        mOutputStallValueView.setText(CameraReport.nsToMs(mStreamMap.getOutputStallDuration(
-                mOutputFormats.get(mOutputFormatInd),mOutputSizes[mOutputSizeInd])));
-        mMinFrameTimeValueView.setText(CameraReport.nsToMs(mStreamMap.getOutputMinFrameDuration(
-                mOutputFormats.get(mOutputFormatInd),mOutputSizes[mOutputSizeInd])));
+        mOutputStallValueView.setText(CameraReport.nsToString(mStreamMap.getOutputStallDuration(
+                mOutputFormats.get(mOutputFormatInd), mOutputSizes[mOutputSizeInd])));
+        mMinFrameTimeValueView.setText(CameraReport.nsToString(mStreamMap.getOutputMinFrameDuration(
+                mOutputFormats.get(mOutputFormatInd), mOutputSizes[mOutputSizeInd])));
 
         mDesignNameEditText = (EditText) v.findViewById(R.id.designNameEditText);
         mDesignNameEditText.setOnEditorActionListener(new TextView.OnEditorActionListener() {
@@ -701,7 +700,8 @@ public class appFragment extends Fragment {
                     // the camera.
 
                     setButtonsClickable(false);
-                    mDesign.startCapture(mCamera, mCaptureSession, mImageReader.getSurface(),mPreviewSurfaceHolder.getSurface(), mBackgroundHandler);
+                    mDesign.startCapture(mCamera, mCaptureSession, mImageReader.getSurface(),
+                            mPreviewSurfaceHolder.getSurface(), mBackgroundHandler,mAutoResult);
                     // inform user sequence is being captured
                     mCapturingDesignTextView.setVisibility(View.VISIBLE);
                     mCaptureButton.setVisibility(View.INVISIBLE);
@@ -1126,7 +1126,7 @@ public class appFragment extends Fragment {
 
             Long rExposureTimeVal = mAutoResult.get(CaptureResult.SENSOR_EXPOSURE_TIME);
             if (null != rExposureTimeVal) {
-                mExposureTimeValueView.setText(CameraReport.nsToMs(rExposureTimeVal));
+                mExposureTimeValueView.setText(CameraReport.nsToString(rExposureTimeVal));
             } else {
                 mExposureTimeValueView.setText(R.string.no_value);
             }
@@ -1166,10 +1166,10 @@ public class appFragment extends Fragment {
                 CameraReport.cameraConstantStringer("android.graphics.ImageFormat",mOutputFormats.get(mOutputFormatInd)));
 
         // Update text fields indicating the time constraints for these settings
-        mOutputStallValueView.setText(CameraReport.nsToMs(mStreamMap.getOutputStallDuration(
-                mOutputFormats.get(mOutputFormatInd),mOutputSizes[mOutputSizeInd])));
-        mMinFrameTimeValueView.setText(CameraReport.nsToMs(mStreamMap.getOutputMinFrameDuration(
-                mOutputFormats.get(mOutputFormatInd),mOutputSizes[mOutputSizeInd])));
+        mOutputStallValueView.setText(CameraReport.nsToString(mStreamMap.getOutputStallDuration(
+                mOutputFormats.get(mOutputFormatInd), mOutputSizes[mOutputSizeInd])));
+        mMinFrameTimeValueView.setText(CameraReport.nsToString(mStreamMap.getOutputMinFrameDuration(
+                mOutputFormats.get(mOutputFormatInd), mOutputSizes[mOutputSizeInd])));
 
         // If High Quality processing required, could be even longer wait times, so
         // indicated this with a "+"

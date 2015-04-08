@@ -47,10 +47,11 @@ public class Exposure {
     // String form just simply displays the parameters readably
     @Override
     public String toString(){
-        return "f" + mAperture + ", " + CameraReport.nsToMs(mExposureTime)
-                + ", ISO " + mSensitivity + ", "
-                + mFocalLength + "mm, focus: "
-                + CameraReport.diopterToMeters(mFocusDistance);
+        return (mAperture<0? "Auto aperture, " : "f" + mAperture + ", ") +
+               ((mExposureTime<0)? "Auto exposureTime, " : CameraReport.nsToString(mExposureTime) + ", ") +
+               ((mSensitivity<0)? "Auto ISO, " : "ISO " + mSensitivity + ", ") +
+               ((mFocalLength<0)? "Auto focalLength, " : mFocalLength + "mm, focus: ") +
+               ((mFocusDistance<0)? "Auto focus" : CameraReport.diopterToMeters(mFocusDistance));
     }
 
 	// - - - - - Setters and Getters - - - - -
