@@ -103,6 +103,7 @@ public class CaptureDesign {
     private CaptureRequest.Builder makeDesignCrb (CameraDevice camera){
         try {
             CaptureRequest.Builder crb = camera.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE);
+            crb.set(CaptureRequest.CONTROL_AF_MODE,CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
 
             // Make different settings based on Processing desired
             if (mProcessingSetting==NONE){
@@ -282,23 +283,30 @@ public class CaptureDesign {
             if (WAITING_FOR_AF==autoState){
                 Integer afState = result.get(CaptureResult.CONTROL_AF_STATE);
                 Log.v(appFragment.APP_TAG,"- - - AF_STATE: " +CameraReport.sContextMap.get("android.control.afState").get(afState));
+
+                // If the AF state has converged, either to in-focus or not-in-focus, advance to
+                // the next state, WAITING_FOR_AE, or if we don't care about AE, just finish.
                 if (CaptureResult.CONTROL_AF_STATE_FOCUSED_LOCKED==afState
                         || CaptureResult.CONTROL_AF_STATE_NOT_FOCUSED_LOCKED==afState){
                     Log.v(appFragment.APP_TAG,"- - - AF Converged.");
 
-                    if (mAEsetting == MANUAL){
+                    if (mAEsetting != AUTO_ALL){
                         Log.v(appFragment.APP_TAG,"- - - Not requiring AE convergence. Posting next Capture.");
                         finishWithAuto();
                     } else {
                         autoState = WAITING_FOR_AE;
                     }
 
-                } else {
+
+                // Otherwise, we are in some PASSIVE state (unless we are in INACTIVE AF state,
+                // which will eventually self-trigger to a PASSIVE state), and we want to
+                // precipitate the converged-and-locked state, so send a TRIGGER.
+                // Don't trigger AE though, that will start its process over.
+                } else if(CaptureResult.CONTROL_AF_STATE_INACTIVE!=afState) {
                     try {
-                        // Auto process is already in progress, so we don't need/want triggers to start them again
-                        Log.v(appFragment.APP_TAG,"- - - Trying again for AF convergence.");
+                        Log.v(appFragment.APP_TAG,"- - - Triggering AF Passive state to lock.");
                         mCaptureCRB.set(CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER, CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER_IDLE);
-                        mCaptureCRB.set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_IDLE);
+                        mCaptureCRB.set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_START);
                         mSession.capture(mCaptureCRB.build(), this, mBackgroundHandler);
                     } catch (CameraAccessException cae){
                         cae.printStackTrace();
@@ -406,12 +414,12 @@ public class CaptureDesign {
                     autoState = WAITING_FOR_AE;
                     // unlock AE and trigger it again
                     mCaptureCRB.set(CaptureRequest.CONTROL_AE_LOCK,false);
-                    mCaptureCRB.set(CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER, CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER_START);
+                    //mCaptureCRB.set(CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER, CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER_START); // i think this is unnecessary
                 }
 
                 if (mAFsetting == AUTO_ALL){
                     autoState = WAITING_FOR_AF;
-                    mCaptureCRB.set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_START);
+                    mCaptureCRB.set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_CANCEL);
                 }
 
                 try {
@@ -504,6 +512,11 @@ public class CaptureDesign {
         return output;
     }
 
+    /* We use a callback which the main Activity instantiates and then registers with the
+     * CaptureDesign. This is used to let the main activity know when each new image is ready so
+     * it can be saved, and also to know when the entire design sequence has been captured so it can
+     * regain control of appropriate things, like the capture session to reinstate previews.
+     */
 
     void registerCallback(DesignCaptureCallback callback){
         mRegisteredCallback = callback;
