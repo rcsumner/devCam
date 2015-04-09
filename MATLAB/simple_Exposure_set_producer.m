@@ -13,7 +13,7 @@
 % .aperture
 % .sensitivity  (this is ISO, but we will be consistent with metadata name)
 % .focalLength
-% .focalDistance
+% .focusDistance
 %
 % Rob Sumner, March 2015
 
@@ -31,7 +31,7 @@ for i = round(logspace(log10(minExpTime),log10(maxExpTime),10))
         'aperture',2.4,...      % units: f-stop. Often fixed.
         'sensitivity',100,...   % units: ISO
         'focallength',1,...     % units: mm. Often fixed.
-        'focaldistance',9);     % units: diopters (possible uncalibrated)
+        'focusdistance',9);     % units: diopters (possible uncalibrated)
     out = cat(2,out,temp);
 end
 

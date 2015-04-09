@@ -2,6 +2,7 @@ package com.devcam;
 
 import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCaptureSession;
+import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CameraDevice;
 import android.hardware.camera2.CaptureFailure;
 import android.hardware.camera2.CaptureRequest;
@@ -11,6 +12,7 @@ import android.hardware.camera2.params.TonemapCurve;
 import android.media.Image;
 import android.os.Handler;
 import android.util.JsonReader;
+import android.util.JsonToken;
 import android.util.Log;
 import android.view.Surface;
 
@@ -21,6 +23,7 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.text.DateFormat;
+import java.text.ParseException;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.Iterator;
@@ -183,22 +186,10 @@ public class CaptureDesign {
     }
 
 
-    void fillAutoValues(CaptureResult autoResult){
+    void fillAutoValues(CameraCharacteristics camChars,CaptureResult autoResult){
         for (Exposure exp : mExposures){
-            if (exp.getAperture()<0){
-                exp.setAperture(autoResult.get(CaptureResult.LENS_APERTURE));
-            }
-            if (exp.getExposureTime()<0){
-                exp.setExposureTime(autoResult.get(CaptureResult.SENSOR_EXPOSURE_TIME));
-            }
-            if (exp.getFocalLength()<0){
-                exp.setFocalLength(autoResult.get(CaptureResult.LENS_FOCAL_LENGTH));
-            }
-            if (exp.getFocusDistance()<0){
-                exp.setFocusDistance(autoResult.get(CaptureResult.LENS_FOCUS_DISTANCE));
-            }
-            if (exp.getSensitivity()<0){
-                exp.setSensitivity(autoResult.get(CaptureResult.SENSOR_SENSITIVITY));
+            if (exp.hasVariableValues()){
+                exp.fixValues(camChars,autoResult);
             }
         }
     }
@@ -230,7 +221,8 @@ public class CaptureDesign {
                              Surface outputSurface,
                              Surface previewSurface,
                              Handler backgroundHandler,
-                             CaptureResult autoResult){
+                             CaptureResult autoResult,
+                             CameraCharacteristics camChars){
 
         mSession = session;
         mBackgroundHandler = backgroundHandler;
@@ -242,7 +234,7 @@ public class CaptureDesign {
         }
 
         // Now see if the exposure parameters should be derived from the AE/AF values or not
-        fillAutoValues(autoResult);
+        fillAutoValues(camChars,autoResult);
 
         mNumCaptured = 0;
         mExposureIt = mExposures.iterator();
@@ -527,13 +519,14 @@ public class CaptureDesign {
     }
 
     // Utility function for time-split exposure set
-    static public CaptureDesign splitTime(Exposure autoExposure, int nExp){
+    static public CaptureDesign splitTime(CaptureResult autoResult, int nExp){
         CaptureDesign output = new CaptureDesign();
         // Assign the Exposure input 1/nExp its regular exposure time
         // then use that in the construct of nExp Exposures in the list.
-        autoExposure.setExposureTime(autoExposure.getExposureTime()/nExp);
         for (int i = 0; i < nExp; i++){
-            output.addExposure(new Exposure(autoExposure));
+            Exposure temp = new Exposure(autoResult);
+            temp.setExposureTime(temp.getExposureTime()/nExp);
+            output.addExposure(temp);
         }
         return output;
     }
@@ -555,7 +548,7 @@ public class CaptureDesign {
     }
 
 
-    static CaptureDesign loadDesignFromJson(File file){
+    static CaptureDesign loadDesignFromJson(File file) throws NoSuchFieldException, IOException, NoSuchMethodException{
         CaptureDesign out = new CaptureDesign();
         try {
             FileInputStream fistream = new FileInputStream(file);
@@ -568,23 +561,108 @@ public class CaptureDesign {
                 while (reader.hasNext()) {
                     Exposure tempExposure = new Exposure();
                     reader.beginObject();
+
+                    boolean hadExposureTime = false;
+                    boolean hadAperture = false;
+                    boolean hadSensitivity = false;
+                    boolean hadFocalLength = false;
+                    boolean hadFocusDistance = false;
+
                     while(reader.hasNext()){
+
                         String nextName = reader.nextName().toLowerCase(); //Deal with capitalization here
                         if (nextName.equals("exposuretime")){
-                            tempExposure.setExposureTime(reader.nextLong());
+                            JsonToken value = reader.peek();
+                            if (value==JsonToken.NUMBER){
+                                tempExposure.setExposureTime(reader.nextLong());
+                                hadExposureTime = true;
+                            } else if (value==JsonToken.STRING){
+                                String next = reader.nextString();
+                                if (next.matches("[0-9.]*\\*[a-zA-Z]*")) {
+                                    tempExposure.recordExposureTimeVar(next);
+                                    hadExposureTime = true;
+                                } else {
+                                    throw new NoSuchMethodException();
+                                }
+                            }
+
+
                         } else if (nextName.equals("aperture")){
-                            tempExposure.setAperture(Double.valueOf(reader.nextDouble()).floatValue());
+                            JsonToken value = reader.peek();
+                            if (value==JsonToken.NUMBER){
+                                tempExposure.setAperture(Double.valueOf(reader.nextDouble()).floatValue());
+                                hadAperture = true;
+                            } else if (value==JsonToken.STRING){
+                                String next = reader.nextString();
+                                if (next.matches("[0-9.]*\\*[a-zA-Z]*")) {
+                                    tempExposure.recordApertureVar(next);
+                                    hadAperture = true;
+                                } else {
+                                    throw new NoSuchMethodException();
+                                }
+                            }
+
                         } else if (nextName.equals("sensitivity")){
-                            tempExposure.setSensitivity(reader.nextInt());
+                            JsonToken value = reader.peek();
+                            if (value==JsonToken.NUMBER){
+                                tempExposure.setSensitivity(reader.nextInt());
+                                hadSensitivity = true;
+                            } else if (value==JsonToken.STRING){
+                                String next = reader.nextString();
+                                if (next.matches("[0-9.]*\\*[a-zA-Z]*")) {
+                                    tempExposure.recordSensitivityVar(next);
+                                    hadSensitivity = true;
+                                } else {
+                                    throw new NoSuchMethodException();
+                                }
+                            }
+
                         } else if (nextName.equals("focallength")){
-                            tempExposure.setFocalLength(Double.valueOf(reader.nextDouble()).floatValue());
-                        } else if (nextName.equals("focaldistance")){
-                            tempExposure.setFocusDistance(Double.valueOf(reader.nextDouble()).floatValue());
+                            JsonToken value = reader.peek();
+                            if (value==JsonToken.NUMBER){
+                                tempExposure.setFocalLength(Double.valueOf(reader.nextDouble()).floatValue());
+                                hadFocalLength = true;
+                            } else if (value==JsonToken.STRING){
+                                String next = reader.nextString();
+                                if (next.matches("[0-9.]*\\*[a-zA-Z]*")) {
+                                    tempExposure.recordFocalLengthVar(next);
+                                    hadFocalLength = true;
+                                } else {
+                                    throw new NoSuchMethodException();
+                                }
+                            }
+
+                        } else if (nextName.equals("focusdistance")){
+                            JsonToken value = reader.peek();
+                            if (value==JsonToken.NUMBER){
+                                Double temp = reader.nextDouble();
+                                tempExposure.setFocusDistance(Double.valueOf(temp).floatValue());
+                                hadFocusDistance = true;
+                            } else if (value==JsonToken.STRING){
+                                String next = reader.nextString();
+                                if (next.matches("[0-9.]*\\*[a-zA-Z]*")) {
+                                    tempExposure.recordFocusDistanceVar(next);
+                                    hadFocusDistance = true;
+                                } else {
+                                    throw new NoSuchMethodException();
+                                }
+                            }
+
                         } else {
                             reader.skipValue();
                         }
                     }
                     reader.endObject();
+
+                    // If this JSON had a malformed object without the necessary field:
+                    if (!hadExposureTime
+                            || !hadAperture
+                            || !hadSensitivity
+                            || !hadFocusDistance
+                            || !hadFocalLength){
+                        throw new NoSuchFieldException();
+                    }
+
                     out.addExposure(tempExposure);
                 }
 
@@ -592,6 +670,7 @@ public class CaptureDesign {
                 reader.close();
             } catch (IOException ioe) {
                 Log.e(appFragment.APP_TAG,"IOException reading Design JSON file.");
+                throw ioe;
             }
 
         } catch (FileNotFoundException fnfe){

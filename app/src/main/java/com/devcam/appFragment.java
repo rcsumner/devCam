@@ -701,7 +701,7 @@ public class appFragment extends Fragment {
 
                     setButtonsClickable(false);
                     mDesign.startCapture(mCamera, mCaptureSession, mImageReader.getSurface(),
-                            mPreviewSurfaceHolder.getSurface(), mBackgroundHandler,mAutoResult);
+                            mPreviewSurfaceHolder.getSurface(), mBackgroundHandler,mAutoResult,mCamChars);
                     // inform user sequence is being captured
                     mCapturingDesignTextView.setVisibility(View.VISIBLE);
                     mCaptureButton.setVisibility(View.INVISIBLE);
@@ -802,7 +802,7 @@ public class appFragment extends Fragment {
             case (SPLIT_AMOUNTS) :
                 if (resultCode==Activity.RESULT_OK){
                     int splitAmount = mSplitAmounts[data.getIntExtra(SelectByLabelActivity.TAG_SELECTED_INDEX, 0)];
-                    CaptureDesign newDesign = CaptureDesign.splitTime(new Exposure(mAutoResult), splitAmount);
+                    CaptureDesign newDesign = CaptureDesign.splitTime(mAutoResult, splitAmount);
                     newDesign.setExposureSetting(mDesign.getExposureSetting());
                     newDesign.setFocusSetting(mDesign.getFocusSetting());
                     newDesign.setProcessingSetting(mDesign.getProcessingSetting());
@@ -846,12 +846,22 @@ public class appFragment extends Fragment {
                 if (resultCode==Activity.RESULT_OK) {
                     String fileName = mFileNames[data.getIntExtra(SelectByLabelActivity.TAG_SELECTED_INDEX,0)];
                     File file = new File(DESIGN_DIR,fileName);
-                    // Create a new captureDesign based on JSON file selected.
-                    CaptureDesign newDesign = CaptureDesign.loadDesignFromJson(file);
-                    newDesign.setExposureSetting(mDesign.getExposureSetting());
-                    newDesign.setFocusSetting(mDesign.getFocusSetting());
-                    newDesign.setProcessingSetting(mDesign.getProcessingSetting());
-                    mDesign = newDesign;
+                    // Create a new captureDesign based on JSON file selected. I KNOW this is terrible
+                    // misuse of incorrect checked exceptions. Will return to this when possible.
+                    try {
+                        CaptureDesign newDesign = CaptureDesign.loadDesignFromJson(file);
+                        newDesign.setExposureSetting(mDesign.getExposureSetting());
+                        newDesign.setFocusSetting(mDesign.getFocusSetting());
+                        newDesign.setProcessingSetting(mDesign.getProcessingSetting());
+                        mDesign = newDesign;
+                    } catch (NoSuchFieldException nsfe){
+                        Toast.makeText(getActivity(),"Error in Capture Design JSON file: missing required field.",Toast.LENGTH_LONG).show();
+                    } catch (IOException ioe){
+                        Toast.makeText(getActivity(),"Error reading JSON file.",Toast.LENGTH_LONG).show();
+                    } catch (NoSuchMethodException nsme){
+                        Toast.makeText(getActivity(),"Error in Capture Design JSON file: incorrect variable form.",Toast.LENGTH_LONG).show();
+                    }
+
                     // CaptureDesign changed, so update View of its exposures.
                     updateDesignViews();
                 }
@@ -1258,7 +1268,7 @@ public class appFragment extends Fragment {
                     writer.value(400); // in ISO
                     writer.name("focalLength");
                     writer.value(mCamChars.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)[0]); //first available
-                    writer.name("focalDistance");
+                    writer.name("focusDistance");
                     writer.value(mCamChars.get(CameraCharacteristics.LENS_INFO_HYPERFOCAL_DISTANCE)); // set for hyperfocal distance for ease
                     writer.endObject();
                 }
@@ -1298,7 +1308,7 @@ public class appFragment extends Fragment {
                     writer.value((int) Math.exp(low + (high-low)*i/sweepLength)); // in ISO
                     writer.name("focalLength");
                     writer.value(mCamChars.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)[0]); //first available
-                    writer.name("focalDistance");
+                    writer.name("focusDistance");
                     writer.value(mCamChars.get(CameraCharacteristics.LENS_INFO_HYPERFOCAL_DISTANCE)); // set for hyperfocal distance for ease
                     writer.endObject();
                 }
@@ -1337,7 +1347,7 @@ public class appFragment extends Fragment {
                     writer.value(400); // in ISO
                     writer.name("focalLength");
                     writer.value(mCamChars.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)[0]); //first available
-                    writer.name("focalDistance");
+                    writer.name("focusDistance");
                     writer.value(minFocus*i/sweepLength); // This is being varied. units: diopters
                     writer.endObject();
                 }
