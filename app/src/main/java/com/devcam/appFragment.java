@@ -18,7 +18,10 @@ import android.hardware.camera2.TotalCaptureResult;
 import android.hardware.camera2.params.StreamConfigurationMap;
 import android.media.Image;
 import android.media.ImageReader;
+import android.media.MediaScannerConnection;
+import android.net.Uri;
 import android.os.Bundle;
+import android.os.CountDownTimer;
 import android.os.Environment;
 import android.os.Handler;
 import android.os.HandlerThread;
@@ -410,11 +413,24 @@ public class appFragment extends Fragment {
             // First, save JSON file with array of metadata
             File file = new File(IM_SAVE_DIR,mDesign.getDesignName() + "_capture_metadata"+".json");
 
-            CameraReport.writeCaptureResultsToFile(designResult.getCaptureResults(), designResult.getFilenames(), file);
+            List<String> imageFileNames = designResult.getFilenames();
+
+            CameraReport.writeCaptureResultsToFile(designResult.getCaptureResults(),imageFileNames, file);
 
             // Now, write out a txt file with the information of the original
             // request for the capture design, to see how it compares with results
-            mDesign.writeOut(new File(IM_SAVE_DIR,mDesign.getDesignName()+"_design_request"+".txt"));
+            File file2 = new File(IM_SAVE_DIR,mDesign.getDesignName()+"_design_request"+".txt");
+            mDesign.writeOut(file2);
+
+            String[] filePathsToAdd = new String[imageFileNames.size()+2];
+            int i=0;
+            for(String img : imageFileNames){
+                filePathsToAdd[i++]=new File(IM_SAVE_DIR,img).getAbsolutePath();
+            }
+            filePathsToAdd[i++]=file.getAbsolutePath();
+            filePathsToAdd[i++]=file2.getAbsolutePath();
+
+            addFilesToMTP(filePathsToAdd);
 
 
             // Make a new CaptureDesign based on the current
@@ -700,11 +716,22 @@ public class appFragment extends Fragment {
                     // the camera.
 
                     setButtonsClickable(false);
-                    mDesign.startCapture(mCamera, mCaptureSession, mImageReader.getSurface(),
-                            mPreviewSurfaceHolder.getSurface(), mBackgroundHandler,mAutoResult,mCamChars);
-                    // inform user sequence is being captured
-                    mCapturingDesignTextView.setVisibility(View.VISIBLE);
-                    mCaptureButton.setVisibility(View.INVISIBLE);
+                    final CharSequence oldText=mCaptureButton.getText();
+
+                    CountDownTimer countDownTimer = new CountDownTimer(5000, 1000) {
+                        public void onTick(long secondsTillFinish){
+                            mCaptureButton.setText((secondsTillFinish/1000) + "s");
+                        }
+                        public void onFinish(){
+                            mDesign.startCapture(mCamera, mCaptureSession, mImageReader.getSurface(),
+                                    mPreviewSurfaceHolder.getSurface(), mBackgroundHandler,mAutoResult,mCamChars);
+                            // inform user sequence is being captured
+                            mCapturingDesignTextView.setVisibility(View.VISIBLE);
+                            mCaptureButton.setVisibility(View.INVISIBLE);
+                            mCaptureButton.setText(oldText);
+                        }
+                    };
+                    countDownTimer.start();
                 }
             }
         });
@@ -1214,6 +1241,8 @@ public class appFragment extends Fragment {
         File file = new File(appFragment.APP_DIR,"cameraReport.json");
         CameraReport.writeCharacteristicsToFile(meta, file);
 
+        addFileToMTP(file.getAbsolutePath());
+
         Log.v(APP_TAG,CameraReport.cameraConstantStringer("android.graphics.ImageFormat",ImageFormat.YV12));
     }
 
@@ -1246,9 +1275,13 @@ public class appFragment extends Fragment {
      */
     private void generateExampleDesigns(){
 
+        List<String> filenames = new ArrayList<String>(3);
+
     // Create exposure time sweep
         try{
-            FileOutputStream fostream = new FileOutputStream(new File(DESIGN_DIR,"sweep_exposure_time.json"));
+            File f = new File(DESIGN_DIR,"sweep_exposure_time.json");
+            filenames.add(f.getAbsolutePath());
+            FileOutputStream fostream = new FileOutputStream(f);
             try{
                 int sweepLength = 10;
                 Range<Long> ISOrange = mCamChars.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE);
@@ -1288,7 +1321,9 @@ public class appFragment extends Fragment {
 
         // Create ISO sweep
         try{
-            FileOutputStream fostream = new FileOutputStream(new File(DESIGN_DIR,"sweep_ISO.json"));
+            File f = new File(DESIGN_DIR,"sweep_ISO.json");
+            filenames.add(f.getAbsolutePath());
+            FileOutputStream fostream = new FileOutputStream(f);
             try{
                 int sweepLength = 10;
                 Range<Integer> ISOrange = mCamChars.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE);
@@ -1328,7 +1363,9 @@ public class appFragment extends Fragment {
 
         // Create Focus Sweep
         try{
-            FileOutputStream fostream = new FileOutputStream(new File(DESIGN_DIR,"sweep_focus.json"));
+            File f = new File(DESIGN_DIR,"sweep_focus.json");
+            filenames.add(f.getAbsolutePath());
+            FileOutputStream fostream = new FileOutputStream(f);
             try{
                 int sweepLength = 10;
                 Float minFocus = mCamChars.get(CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE);
@@ -1364,6 +1401,23 @@ public class appFragment extends Fragment {
         catch (IOException ioe){
             ioe.printStackTrace();
         }
+
+        addFilesToMTP(filenames.toArray(new String[3]));
+    }
+
+
+    public void addFilesToMTP(String[] filePathsToAdd){
+        MediaScannerConnection.scanFile(getActivity(),filePathsToAdd,null,
+                new MediaScannerConnection.OnScanCompletedListener() {
+                    public void onScanCompleted(String path, Uri uri) {
+                        Log.i("ExternalStorage", "Scanned " + path + ":");
+                        Log.i("ExternalStorage", "-> uri=" + uri);
+                    }
+                });
+    }
+
+    public void addFileToMTP(String file){
+        addFilesToMTP(new String[]{file});
     }
 
 
