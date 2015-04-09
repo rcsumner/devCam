@@ -24,7 +24,7 @@ public class Exposure {
 
     final static String LOWER ="LOWER";
     final static String AUTO ="AUTO";
-    final static String UPPER ="HIGHER";
+    final static String UPPER ="UPPER";
 
     private boolean mHasVariables = false;
     private String mExposureTimeVar = null;
