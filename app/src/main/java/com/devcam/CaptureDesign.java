@@ -23,7 +23,6 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.text.DateFormat;
-import java.text.ParseException;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.Iterator;
@@ -33,15 +32,12 @@ import java.util.Random;
 public class CaptureDesign {
 
     private String mDesignName;
-    private List<Exposure> mExposures = new ArrayList<Exposure>();
+    private List<Exposure> mExposures = new ArrayList<Exposure>(); // List of the Exposures of the Design
+
+    // DesignResult object that gathers the output images and data from this CaptureDesign
     private DesignResult mDesignResult;
 
-    private Iterator<Exposure> mExposureIt;
-
-    CameraCaptureSession mSession;
-    Handler mBackgroundHandler;
-    CaptureRequest.Builder mCaptureCRB;
-
+    // The main Activity makes a callback, registers it here so the CaptureDesign knows what to call
     DesignCaptureCallback mRegisteredCallback;
 
 
@@ -58,26 +54,35 @@ public class CaptureDesign {
     static final Integer FAST = 1;
     static final Integer HIGH_QUALITY = 2;
 
-
-
-
-    private int mNumCaptured;
-
-    // Flags for the entire design's auto scheme
+    // Actual variables for the CaptureDesign's auto Intents
     private Integer mAFsetting = MANUAL;
     private Integer mAEsetting = MANUAL;
     private Integer mProcessingSetting = FAST;
 
 
-    // State variable for auto "background" repeating request.
+    // These camera2-related things are not fundamental to the CaptureDesign concept, but are
+    // necessary for the CaptureDesign to control its own capturing process.
+    CameraCaptureSession mSession;
+    Handler mBackgroundHandler;
+    CaptureRequest.Builder mCaptureCRB;
+
+    // Once capture has started, this keeps track of progress in the Exposure sequence
+    private Iterator<Exposure> mExposureIt;
+
+    private int mNumCaptured; // tracks the number of images actually captured, not just posted
+
+
+    // State variable and possible static values for the auto-focus/exposure state machine
     Integer autoState;
     final Integer WAITING_FOR_AF = 0;
     final Integer WAITING_FOR_AE = 1;
 
 
+
+
     // - - - - - Constructors  - - - - -
     public CaptureDesign(){
-        // If the Design Name has not been set, make one randomly, a 4-digit number
+        // Make a new design name, a random 4-digit number
         Random randGen = new Random();
         Integer randVal = randGen.nextInt();
         if (randVal<=0){
@@ -102,7 +107,6 @@ public class CaptureDesign {
      * modes. Leaves the control mode as AUTO for focus/exposure processes because we only want to
      * overwrite these at the right time.
      */
-
     private CaptureRequest.Builder makeDesignCrb (CameraDevice camera){
         try {
             CaptureRequest.Builder crb = camera.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE);
@@ -132,7 +136,6 @@ public class CaptureDesign {
                 crb.set(CaptureRequest.TONEMAP_MODE, CaptureRequest.TONEMAP_MODE_HIGH_QUALITY);
                 return crb;
             }
-
         } catch (CameraAccessException cae){
             cae.printStackTrace();
             return null;
@@ -141,6 +144,14 @@ public class CaptureDesign {
         return null;
     }
 
+
+    /* void updateCRB()
+     *
+     * Update the CaptureRequest.Builder being used so that it has the values of the next Exposure
+     * in the sequence. This happens whenever we are ready to move onto a new desired frame of the
+     * sequence. The iterator increments and sets up the capture request builder with the correct
+     * parameters.
+     */
     private void updateCRB(){
 
         if (mExposureIt.hasNext()){
@@ -155,11 +166,20 @@ public class CaptureDesign {
     }
 
 
+
+    /* void captureSequenceBurst()
+     *
+     * Method for taking the list of target Exposures, turning them into CaptureRequests, and then
+     * capturing them as a burst. The easiest way to capture all of the frames in the sequence, and
+     * is used when focus and exposure Intents are set to MANUAL, or once the desired auto intents
+     * are only AUTO ONCE, LOCK and they have already converged.
+     */
     private void captureSequenceBurst(){
         Log.v(appFragment.APP_TAG,"- - - - - Capturing Exposure Sequence as a Burst.");
         List<CaptureRequest> burstRequests= new ArrayList<CaptureRequest>();
 
-        // Ensure that a new AE/AF search will not be started, and that AE is locked
+        // IF AE/EF was used once before capturing the burst, ensure that they are locked and will
+        // not start a new search on any frame in the burst.
         mCaptureCRB.set(CaptureRequest.CONTROL_AE_LOCK,true);
         mCaptureCRB.set(CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER, CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER_IDLE);
         mCaptureCRB.set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_IDLE);
@@ -167,7 +187,6 @@ public class CaptureDesign {
         Iterator<Exposure> localExposureIt = mExposures.iterator();
         while (localExposureIt.hasNext()){
             Exposure next = localExposureIt.next();
-
             // don't change *_MODE settings, just values, to avoid state resets
             mCaptureCRB.set(CaptureRequest.SENSOR_EXPOSURE_TIME, next.getExposureTime());
             mCaptureCRB.set(CaptureRequest.SENSOR_SENSITIVITY, next.getSensitivity());
@@ -186,6 +205,13 @@ public class CaptureDesign {
     }
 
 
+
+    /* void fillAutoValues(CameraCharacteristics, CaptureResult)
+     *
+     * This method is called before trying to access the values of the Exposures, in order to make
+     * sure that there are explicit values for all parameters in all exposures, not just variable
+     * parameter values.
+     */
     void fillAutoValues(CameraCharacteristics camChars,CaptureResult autoResult){
         for (Exposure exp : mExposures){
             if (exp.hasVariableValues()){
@@ -196,12 +222,16 @@ public class CaptureDesign {
 
 
 
-    /* void startCapture(CameraDevice,CameraCaptureSession,output Surface,preview Surface,Handler)
+
+    /* void startCapture(CameraDevice, CameraCaptureSession, output Surface, preview Surface,
+     * Handler, CaptureResult, CameraCharacteristics)
      *
-     * Begins the capture process by passing the necessary objects for this class to communicate
-     * with the camera appropriately.
+     * Begins the capture process of the entire CaptureDesign.
+     * The first four arguments are necessary for this class to control the camera device and
+     * properly place the outputs. The latter two are necessary only for generating explicit
+     * Exposure parameter values if the Exposures in the list have variable parameter values.
      *
-     * The process determines its behavior based on the requested A3 processes.:
+     * The process determines its behavior based on the requested A3 processes:
      *
      * - If no AF or AE is requested, we can just do a straight burst capture right away.
      * - If AE and/or AF are requested only FIRST, then all we have to do is let the converge with a
@@ -213,7 +243,9 @@ public class CaptureDesign {
      * of that capture, posts a new awaiting-convergence capture request.
      *
      * Rather than using a repeating capture request for these convergence tasks, we use individual
-     * capture commands which recur "manually" if the state isn't converged yet. This is so
+     * capture commands which recur "manually" if the state isn't converged yet. This gives us more
+     * control over the entire process, so there aren't errant frames going through the camera
+     * device and changing settings at all.
      */
 
     public void startCapture(CameraDevice camera,
@@ -224,6 +256,7 @@ public class CaptureDesign {
                              CaptureResult autoResult,
                              CameraCharacteristics camChars){
 
+        // Store the two pieces related to camera control which we will need later in callbacks
         mSession = session;
         mBackgroundHandler = backgroundHandler;
 
@@ -233,65 +266,76 @@ public class CaptureDesign {
             return;
         }
 
-        // Now see if the exposure parameters should be derived from the AE/AF values or not
+        // Now see if the exposure parameters should be derived from the AE/AF values or not,
+        // and give them explicit values if so
         fillAutoValues(camChars,autoResult);
 
+        // Initialize before capture
         mNumCaptured = 0;
         mExposureIt = mExposures.iterator();
 
         // Create a new (blank) DesignResult for this design
         mDesignResult = new DesignResult(mDesignName,mExposures.size(),this);
 
-        if (mExposureIt.hasNext()){
-            try {
-                Log.v(appFragment.APP_TAG,"- - - - - - - - - - - - - - - - - - - - - - - - - - - - -");
-                Log.v(appFragment.APP_TAG,"Starting Design Capture. Stop repeating preview images.");
-                session.stopRepeating(); // Stop the preview repeating requests from clogging the works
+        try {
+            Log.v(appFragment.APP_TAG,"- - - - - - - - - - - - - - - - - - - - - - - - - - - - -");
+            Log.v(appFragment.APP_TAG,"Starting Design Capture. Stop repeating preview images.");
+            session.stopRepeating(); // Stop the preview repeating requests from clogging the works
 
-                mCaptureCRB = makeDesignCrb(camera);
-                mCaptureCRB.addTarget(outputSurface);
-                mCaptureCRB.addTarget(previewSurface);
+            // Generate a CaptureRequest.Builder with the appropriate settings
+            mCaptureCRB = makeDesignCrb(camera);
+            mCaptureCRB.addTarget(outputSurface);
+            // We want the user to be able to see the images as they are captured, as well as the
+            // auto-convergence process images to the feel like the system is still active
+            mCaptureCRB.addTarget(previewSurface);
 
-                mCaptureCRB.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_OFF);
-                mCaptureCRB.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_OFF);
+            // Initially set for manual control and then, depending on the settings, re-instate auto
+            mCaptureCRB.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_OFF);
+            mCaptureCRB.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_OFF);
 
-                // If all of manually-set parameters are to be used, just capture the burst, stat,
-                // using the current exposure and focus values.
-                if (mAFsetting == MANUAL && mAEsetting == MANUAL){
-                    captureSequenceBurst();
-                    return;
-                }
-
-                // Otherwise, use the callback that continues posting single captures until it hits
-                // desired auto-state convergence. First, give this request the values of the first
-                // Exposure in the list so that they will be set for either auto process that is NOT
-                // used.
-                updateCRB();
-
-                if (mAFsetting !=MANUAL){
-                    autoState = WAITING_FOR_AF;
-                    mCaptureCRB.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
-                    mCaptureCRB.set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_START);
-                }
-
-                if (mAEsetting !=MANUAL){
-                    if (mAFsetting ==0) autoState = WAITING_FOR_AE;
-                    mCaptureCRB.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON);
-                    mCaptureCRB.set(CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER, CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER_START);
-                }
-
-                mSession.capture(mCaptureCRB.build(), mCaptureCCB, mBackgroundHandler);
-
-            } catch (CameraAccessException cae){
-                cae.printStackTrace();
+            // If all of manually-set parameters are to be used, just capture the burst, stat,
+            // using the current exposure and focus values.
+            if (mAFsetting == MANUAL && mAEsetting == MANUAL){
+                captureSequenceBurst();
+                return;
             }
-        }
 
+            // Otherwise, use the callback that continues posting single captures until it hits
+            // desired auto-state convergence. First, give this request the values of the first
+            // Exposure in the list so that they will be set for either auto process that is NOT
+            // used.
+            updateCRB();
+
+
+            // Now set the auto controls as desired, and the states accordingly. Note that we use
+            // a state machine that goes from determining focus to determining exposure, so we
+            // only change the state to WAITING_FOR_AE if the we are not waiting for AF first
+            if (mAFsetting !=MANUAL){
+                autoState = WAITING_FOR_AF;
+                mCaptureCRB.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
+                mCaptureCRB.set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_START);
+            }
+
+            if (mAEsetting !=MANUAL){
+                if (mAFsetting ==0) autoState = WAITING_FOR_AE;
+                mCaptureCRB.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON);
+                mCaptureCRB.set(CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER, CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER_START);
+            }
+
+            // Actually post the first request to start the auto-routines
+            mSession.capture(mCaptureCRB.build(), mAutoCCB, mBackgroundHandler);
+
+        } catch (CameraAccessException cae){
+            cae.printStackTrace();
+        }
     }
 
 
 
-    private CameraCaptureSession.CaptureCallback mCaptureCCB = new CameraCaptureSession.CaptureCallback() {
+    /* CaptureCallback that handles frames that are part of the auto-Intent convergence state
+     * machine cycle.
+     */
+    private CameraCaptureSession.CaptureCallback mAutoCCB = new CameraCaptureSession.CaptureCallback() {
 
         @Override
         public void onCaptureCompleted(CameraCaptureSession session,
@@ -316,10 +360,10 @@ public class CaptureDesign {
                     }
 
 
-                // Otherwise, we are in some PASSIVE state (unless we are in INACTIVE AF state,
-                // which will eventually self-trigger to a PASSIVE state), and we want to
-                // precipitate the converged-and-locked state, so send a TRIGGER.
-                // Don't trigger AE though, that will start its process over.
+                    // Otherwise, we are in some PASSIVE state (unless we are in INACTIVE AF state,
+                    // which will eventually self-trigger to a PASSIVE state), and we want to
+                    // precipitate the converged-and-locked state, so send a TRIGGER.
+                    // Don't trigger AE though, that will start its process over.
                 } else if(CaptureResult.CONTROL_AF_STATE_INACTIVE!=afState) {
                     try {
                         Log.v(appFragment.APP_TAG,"- - - Triggering AF Passive state to lock.");
@@ -354,13 +398,19 @@ public class CaptureDesign {
         }
 
 
+        /* void finishWithAuto()
+         *
+         * This gets called by the callback when the desired auto-processes have converged. Now that
+         * the state has been met, we can lock the values from it and capture either the entire
+         * burst (if this is the first time called and we only wanted AUTO ONCE, LOCK intent for
+         * both processes) or the next target frame in the Exposure sequence.
+         */
         private void finishWithAuto(){
             Log.v(appFragment.APP_TAG,"- - - Finished with this frame's Auto sequence. Posting CaptureNextExposure().");
 
             // If either Auto process was being used for only the first frame, let us now just
-            // post a burst capture since the state is converged
+            // post a burst capture since the state is converged.
             if (mAEsetting != AUTO_ALL && mAFsetting != AUTO_ALL){
-
                 captureSequenceBurst();
                 return;
             }
@@ -369,12 +419,12 @@ public class CaptureDesign {
             // capture the next frame with this converged state, and then let another
             // converging process begin in the onCaptureCompleted() callback
             try {
-                    // Exposure settings have already been set for mCaptureCRB.
-                    // Ensure that a new AE/AF search will not be started, and that AE is locked
-                    mCaptureCRB.set(CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER, CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER_IDLE);
-                    mCaptureCRB.set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_IDLE);
-                    mCaptureCRB.set(CaptureRequest.CONTROL_AE_LOCK,true);
-                    mSession.capture(mCaptureCRB.build(),frameCCB,mBackgroundHandler);
+                // Exposure settings have already been set for mCaptureCRB.
+                // Ensure that a new AE/AF search will not be started, and that AE is locked
+                mCaptureCRB.set(CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER, CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER_IDLE);
+                mCaptureCRB.set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_IDLE);
+                mCaptureCRB.set(CaptureRequest.CONTROL_AE_LOCK,true);
+                mSession.capture(mCaptureCRB.build(),frameCCB,mBackgroundHandler);
 
                 // This approach of starting a new capture instead of just using the current result
                 // is suboptimal for time, but the user has already sacrificed that by using an
@@ -392,31 +442,42 @@ public class CaptureDesign {
 
 
 
-
-
-
-
+    /* CaptureCallback that handles frames that are actually part of the desired image sequence,
+     * not part of the auto-routine-convergence cycling.
+     */
     private CameraCaptureSession.CaptureCallback frameCCB = new CameraCaptureSession.CaptureCallback() {
         // Note this callback will be running on background thread.
 
         @Override
         public void onCaptureStarted(CameraCaptureSession session, CaptureRequest request, long timestamp, long frameNumber){
-            // For keeping track of images actually part of capture, so imagesaver can distinguish from auto images
+            // When a targeted capture starts, record the identifying timestamp in the DesignResult
+            // so that later steps, such as the ImageReader, can identify which images are wanted
+            // and which are from the auto-convergence process.
             mDesignResult.recordCaptureTimestamp(timestamp);
         }
 
         @Override
         public void onCaptureCompleted(CameraCaptureSession session,
                                        CaptureRequest request, TotalCaptureResult result){
-            // Store the result for later
             Log.v(appFragment.APP_TAG,"Frame capture completed, result saved to DesignResult.");
-            mDesignResult.recordCaptureResult(result);
-            mNumCaptured++;
 
+            // Store the result for later matching with an Image and writing out
+            mDesignResult.recordCaptureResult(result);
+
+            // If we have just captured the last image in the sequence, we can skip the following
+            // code and return here. The camera device is done for the time being, and the whole
+            // capturing process will signal its end from the DesignResult object when the last
+            // Image/CaptureResult pair has been recorded and written out.
+            mNumCaptured++;
             if (mNumCaptured==mExposures.size()){
                 Log.v(appFragment.APP_TAG,"That was the last exposure to capture!");
                 return;
             }
+
+            // The following code is only run if there are more images to capture AND some auto
+            // Intent is being used. In such a case, a new capture request must be posted to the
+            // session to start the auto exposure/focus process before the next frame is to be
+            // captured.
 
             // If we are using an auto-process for all exposures, post the next one to start converging
             if (mAEsetting == AUTO_ALL || mAFsetting == AUTO_ALL) {
@@ -441,7 +502,8 @@ public class CaptureDesign {
                 }
 
                 try {
-                    mSession.capture(mCaptureCRB.build(), mCaptureCCB, mBackgroundHandler);
+                    // Post the capture request to return to the auto-state-machine capture callback
+                    mSession.capture(mCaptureCRB.build(), mAutoCCB, mBackgroundHandler);
                 } catch (CameraAccessException cae){
                     cae.printStackTrace();
                 }
@@ -452,8 +514,17 @@ public class CaptureDesign {
         public void onCaptureFailed(CameraCaptureSession session,
                                     CaptureRequest request, CaptureFailure failure){
             Log.v(appFragment.APP_TAG,"!!! Frame capture failure! Writing out the failed CaptureRequest !!!");
+            // If the capture failed, write out a JSON file with the metadata about it.
             File file = new File(appFragment.APP_DIR,"Failed_CaptureRequest_"+".json");
+
             CameraReport.writeCaptureRequestToFile(request, file);
+
+             /* not implemented yet */
+//            // Also increase the number of filenames in the DesignResult so that its method of
+//            // knowing when all the captures have been completed does not get thrown off.
+//            mDesignResult.reportFailedCapture();
+
+            //Also let the CaptureDesign know not to wait any more for this frame.
             mNumCaptured++;
         }
     };
@@ -461,64 +532,12 @@ public class CaptureDesign {
 
 
 
-
-    public String getDesignName(){
-        return mDesignName;
-    }
-
-    public void setDesignName(String name){
-        mDesignName = name;
-    }
-
-    public DesignCaptureCallback getCallback(){
-        return mRegisteredCallback;
-    }
-
-    public List<Exposure> getExposures(){
-        return mExposures;
-    }
-
-    public DesignResult getDesignResult(){
-        return mDesignResult;
-    }
-
-    public Integer getProcessingSetting(){
-        return mProcessingSetting;
-    }
-
-    public void setProcessingSetting(Integer I){
-        mProcessingSetting = I;
-    }
-
-    public void setExposureSetting(Integer I){
-        mAEsetting = I;
-    }
-
-    public void setFocusSetting(Integer I){
-        mAFsetting = I;
-    }
-
-    public Integer getExposureSetting(){
-        return mAEsetting;
-    }
-
-    public Integer getFocusSetting(){
-        return mAFsetting;
-    }
-
-    public void clearExposures(){
-        mExposures = null;
-    }
-
-    public void addExposures(List<Exposure> list){
-        mExposures.addAll(list);
-    }
-
-    public void addExposure(Exposure exp){
-        mExposures.add(exp);
-    }
-
-    // Utility function for time-split exposure set
+    /* static CaptureDesign splitTime(CaptureResult, int n)
+     *
+     * Static utility function for generating a CaptureDesign by taking the values present in a
+     * CaptureResult and repeating them in n many Exposures, except for exposure time, each of which
+     * is 1/n the CaptureResult's.
+     */
     static public CaptureDesign splitTime(CaptureResult autoResult, int nExp){
         CaptureDesign output = new CaptureDesign();
         // Assign the Exposure input 1/nExp its regular exposure time
@@ -531,23 +550,45 @@ public class CaptureDesign {
         return output;
     }
 
+
+
+
     /* We use a callback which the main Activity instantiates and then registers with the
      * CaptureDesign. This is used to let the main activity know when each new image is ready so
      * it can be saved, and also to know when the entire design sequence has been captured so it can
      * regain control of appropriate things, like the capture session to reinstate previews.
      */
+    static abstract class DesignCaptureCallback {
+        abstract void onFinished(DesignResult designResult);
+        abstract void onImageReady(Image image, CaptureResult result, String filename);
+    }
 
     void registerCallback(DesignCaptureCallback callback){
         mRegisteredCallback = callback;
     }
 
 
-    static abstract class DesignCaptureCallback {
-        abstract void onFinished(DesignResult designResult);
-        abstract void onImageReady(Image image, CaptureResult result, String filename);
-    }
 
 
+
+    /* static CaptureDesign loadDesignFromJson(File)
+     *
+     * Static method to read a JSON pointed to be the input File into a CaptureDesign. The
+     * CaptureDesign will have the default Intent values, as well as a list of Exposures which is
+     * derived from the array-of-objects describing Exposure parameters in the JSON.
+     *
+     * If an object in the JSON array does not contain one of the necessary fields, an exception is
+     * thrown.
+     *
+     * If a variable parameter string does not follow the form "x*AUTO", a different exception is
+     * thrown.
+     *
+     * Currently, no other check on the content is performed, such as making sure the exposureTime
+     * can be read as a Long.
+     *
+     * I know the capricious use of these specific checked exceptions is probably infuriating, but
+     * it works for now.
+     */
     static CaptureDesign loadDesignFromJson(File file) throws NoSuchFieldException, IOException, NoSuchMethodException{
         CaptureDesign out = new CaptureDesign();
         try {
@@ -558,17 +599,27 @@ public class CaptureDesign {
             try {
                 reader.beginArray();
 
+                // While there's another object in this array of JSON Exposures
                 while (reader.hasNext()) {
                     Exposure tempExposure = new Exposure();
                     reader.beginObject();
 
+                    // These flags make sure all necessary fields for an Exposure were obtained
                     boolean hadExposureTime = false;
                     boolean hadAperture = false;
                     boolean hadSensitivity = false;
                     boolean hadFocalLength = false;
                     boolean hadFocusDistance = false;
 
+                    // While there's another field in this JSON Exposure
                     while(reader.hasNext()){
+                        /* Check to see if the field is any of the five necessary, expected ones.
+                         * For each field in the object that indicates one of the parameters, parse
+                         * whether the parameter contained is a number, indicating a literal
+                         * parameter value, or a string, indicating a variable parameter value.
+                         * If it is a string, make sure it fits the required format, as a fairly
+                         * loose check.
+                         */
 
                         String nextName = reader.nextName().toLowerCase(); //Deal with capitalization here
                         if (nextName.equals("exposuretime")){
@@ -663,6 +714,7 @@ public class CaptureDesign {
                         throw new NoSuchFieldException();
                     }
 
+                    // Add the properly-read Exposure to the list.
                     out.addExposure(tempExposure);
                 }
 
@@ -672,22 +724,27 @@ public class CaptureDesign {
                 Log.e(appFragment.APP_TAG,"IOException reading Design JSON file.");
                 throw ioe;
             }
-
         } catch (FileNotFoundException fnfe){
             Log.e(appFragment.APP_TAG,"Design JSON file not found.");
         }
-
         return out;
     }
 
 
+
+    /* void writeOut(File)
+     *
+     * Write out a text file of what this CaptureDesign consisted of. Can be important because the
+     * camera might not always deliver exactly what you requested, so you can compare. Also,
+     * sometimes you simply forget what it was you were trying to do...
+     */
     void writeOut(File file){
         try {
             FileWriter writer = new FileWriter(file);
 
             writer.write("Design name: " + mDesignName + "\n");
             writer.write("Capture time: "
-                   + DateFormat.getDateTimeInstance().format(new Date(System.currentTimeMillis())) + "\n");
+                    + DateFormat.getDateTimeInstance().format(new Date(System.currentTimeMillis())) + "\n");
             writer.write("Focus setting: " + FOCUS_CHOICES[mAFsetting] + "\n");
             writer.write("Exposure setting: " + EXPOSURE_CHOICES[mAEsetting] + "\n");
             writer.write("Processing setting: " + PROCESSING_CHOICES[mProcessingSetting] + "\n");
@@ -700,229 +757,46 @@ public class CaptureDesign {
         }
     }
 
-} // End whole class
 
 
+    // - - - - Setters and Getters - - - -
 
-// - - - - - - The old way of doing things. May be useful to return to some day, or reuse - - - - -
-
-
-
-//    private CameraCaptureSession.CaptureCallback frameCCB = new CameraCaptureSession.CaptureCallback() {
-//        // Note this callback will be running on background thread.
-//
-//        @Override
-//        public void onCaptureStarted(CameraCaptureSession session, CaptureRequest request, long timestamp, long frameNumber){
-//            mDesignResult.recordCaptureTimestamp(timestamp); // For keeping track of images actually part of capture, so imagesaver can distinguish from auto images
-//        }
-//
-//        @Override
-//        public void onCaptureCompleted(CameraCaptureSession session,
-//                                       CaptureRequest request, TotalCaptureResult result){
-//            // Store the result for later
-//            Log.v(appFragment.APP_TAG,"Frame capture completed, result saved to DesignResult.");
-//            mDesignResult.recordCaptureResult(result);
-//            mNumCaptured++;
-//        }
-//
-//        @Override
-//        public void onCaptureFailed(CameraCaptureSession session,
-//                                    CaptureRequest request, CaptureFailure failure){
-//            Log.v(appFragment.APP_TAG,"!!! Frame capture failure! Writing out the failed CaptureRequest !!!");
-//            File file = new File(appFragment.APP_DIR,"Failed_CaptureRequest_"+".json");
-//            CameraReport.writeCaptureRequestToFile(request, file);
-//            mNumCaptured++;
-//        }
-//    };
-
-
-// private class CaptureNextExposure implements Runnable {
-//
-//		@Override
-//		public void run(){
-//			Log.v(appFragment.APP_TAG,"- - - - - Running CaptureNextExposure.");
-//			if (mExposureIt.hasNext()){
-//
-//				Exposure next = mExposureIt.next();
-//				mCaptureCRB.set(CaptureRequest.SENSOR_EXPOSURE_TIME, next.getExposureTime());
-//				mCaptureCRB.set(CaptureRequest.SENSOR_SENSITIVITY, next.getSensitivity());
-//				mCaptureCRB.set(CaptureRequest.LENS_APERTURE, next.getAperture());
-//				mCaptureCRB.set(CaptureRequest.LENS_FOCAL_LENGTH, next.getFocalLength());
-//				mCaptureCRB.set(CaptureRequest.LENS_FOCUS_DISTANCE, next.getFocusDistance());
-//
-//				try {
-//					mSession.capture(mCaptureCRB.build(),frameCCB, mBackgroundHandler);
-//					Log.d(appFragment.APP_TAG,"- - - - - Frame Capture Request sent to camera.");
-//				} catch (CameraAccessException cae) {
-//					cae.printStackTrace();
-//				}
-//			}
-//
-//			if (mExposureIt.hasNext()) {
-//				if (AUTO_ALL==mAFsetting || mAEsetting==ALL_AUTO_AE){
-//					Log.v(appFragment.APP_TAG,"- - - - - Using auto something for next frame, so simply going to wait for Auto Check-in.");
-//				} else {
-//					Log.v(appFragment.APP_TAG,"- - - - - Auto not being used for next frame. Directly Posting CaptureNextExposure.");
-//					mBackgroundHandler.post(new CaptureNextExposure());
-//				}
-//			} else {
-//				Log.v(appFragment.APP_TAG,"- - - - - No more Exposures in list, all done! Put preview back up.");
-//				Log.v(appFragment.APP_TAG,"- - - - - - - - - - - - - - - - - - - - - - - - - - - - -");
-//				mCaptureFinishedFlag = true;
-//			}
-//		}
-//	}
-
-//	private CameraCaptureSession.CaptureCallback autoCCB = new CameraCaptureSession.CaptureCallback() {
-//
-//		@Override
-//		public void onCaptureCompleted(CameraCaptureSession session,
-//				CaptureRequest request,TotalCaptureResult result){
-//			Log.v(appFragment.APP_TAG,"Auto State Check-in! - - - ");
-//
-//			if (mCaptureFinishedFlag){
-//				Log.v(appFragment.APP_TAG,"- - - Capture sequence is finished. Leftover Auto State Check-In.");
-//				return;
-//			}
-//
-//			if (WAITING_FOR_AF==autoState){
-//				Integer afState = result.get(CaptureResult.CONTROL_AF_STATE);
-//				Log.v(appFragment.APP_TAG,"- - - AF_STATE: " +CameraReport.sContextMap.get("android.control.afState").get(afState));
-//				if (CaptureResult.CONTROL_AF_STATE_FOCUSED_LOCKED==afState
-//						|| CaptureResult.CONTROL_AF_STATE_NOT_FOCUSED_LOCKED==afState){
-//					Log.v(appFragment.APP_TAG,"- - - AF Locked.");
-//					autoState = WAITING_FOR_AE;
-//
-//					if (mAEsetting>0){
-//						Integer aeState = result.get(CaptureResult.CONTROL_AE_STATE);
-//						Log.v(appFragment.APP_TAG,"- - - AE_STATE: " +CameraReport.sContextMap.get("android.control.aeState").get(aeState));
-//						if (CaptureResult.CONTROL_AE_STATE_CONVERGED==aeState ||
-//								CaptureResult.CONTROL_AE_STATE_FLASH_REQUIRED==aeState) {
-//							Log.v(appFragment.APP_TAG,"- - - AE also converged.");
-//							finishWithAuto();
-//						} else {
-//							Log.v(appFragment.APP_TAG,"- - - Waiting for AE convergence.");
-//						}
-//					} else {
-//						Log.v(appFragment.APP_TAG,"- - - Not requiring AE convergence.");
-//						finishWithAuto();
-//					}
-//				}
-//			}
-//
-//			if (WAITING_FOR_AE==autoState && mAEsetting>0){
-//				Integer aeState = result.get(CaptureResult.CONTROL_AE_STATE);
-//				Log.v(appFragment.APP_TAG,"- - - AE_STATE: " +CameraReport.sContextMap.get("android.control.aeState").get(aeState));
-//				if (CaptureResult.CONTROL_AE_STATE_CONVERGED==aeState ||
-//						CaptureResult.CONTROL_AE_STATE_FLASH_REQUIRED==aeState) {
-//					Log.v(appFragment.APP_TAG,"- - - AE converged. Posting CaptureNextExposure().");
-//					finishWithAuto();
-//				} else {
-//					Log.v(appFragment.APP_TAG,"- - - Waiting for AE convergence.");
-//				}
-//			}
-//		}
-//
-//
-//        private void finishWithAuto(){
-//            Log.v(appFragment.APP_TAG,"- - - Finished with this frame's Auto sequence. Posting CaptureNextExposure().");
-//            mBackgroundHandler.post(new CaptureNextExposure());
-//            autoState = FINISHED; // in case any other auto requests are still in pipeline
-//
-//            if (mAEsetting==ALL_AUTO_AE){
-//                Log.v(appFragment.APP_TAG,"- - - Still using AE.");
-//                autoState = WAITING_FOR_AE;
-//            }
-//
-//            if (mAFsetting==AUTO_ALL){
-//                Log.v(appFragment.APP_TAG,"- - - Still using AF.");
-//                autoState = WAITING_FOR_AF;
-//            }
-//
-//            if (mAFsetting!=AUTO_ALL && mAEsetting!=ALL_AUTO_AE){
-//                Log.v(appFragment.APP_TAG,"- - - No more Auto. Turning off repeating requests.");
-//                try {
-//                    mSession.stopRepeating();
-//                } catch (CameraAccessException cae){
-//                    cae.printStackTrace();
-//                }
-//            }
-//        }
-//	};
+    public String getDesignName(){
+        return mDesignName;
+    }
+    public void setDesignName(String name){
+        mDesignName = name;
+    }
+    public DesignCaptureCallback getCallback(){
+        return mRegisteredCallback;
+    }
+    public List<Exposure> getExposures(){
+        return mExposures;
+    }
+    public DesignResult getDesignResult(){
+        return mDesignResult;
+    }
+    public Integer getProcessingSetting(){
+        return mProcessingSetting;
+    }
+    public void setProcessingSetting(Integer I){
+        mProcessingSetting = I;
+    }
+    public void setExposureSetting(Integer I){
+        mAEsetting = I;
+    }
+    public void setFocusSetting(Integer I){
+        mAFsetting = I;
+    }
+    public Integer getExposureSetting(){
+        return mAEsetting;
+    }
+    public Integer getFocusSetting(){
+        return mAFsetting;
+    }
+    public void addExposure(Exposure exp){
+        mExposures.add(exp);
+    }
 
 
-
-//    public void startCapture(CameraDevice camera,
-//			CameraCaptureSession session,
-//			Surface outputSurface,
-//			Surface previewSurface,
-//			Handler backgroundHandler){
-//
-//		mSession = session;
-//		mBackgroundHandler = backgroundHandler;
-//
-//		mCaptureFinishedFlag = false;
-//		mNumCaptured = 0;
-//
-//		mExposureIt = mExposures.iterator();
-//
-//		// Create a new (blank) DesignResult for this design
-//		mDesignResult = new DesignResult(mDesignName,mExposures.size(),this);
-//
-//		if (mExposureIt.hasNext()){
-//			try {
-//				Log.v(appFragment.APP_TAG,"- - - - - - - - - - - - - - - - - - - - - - - - - - - - -");
-//				Log.v(appFragment.APP_TAG,"Starting Design Capture. Stop repeating preview images.");
-//				session.stopRepeating(); // Stop the preview repeating requests
-//				CaptureRequest.Builder autoCRB = makeDesignCrb(camera);
-//				autoCRB.addTarget(outputSurface);
-//
-//				mCaptureCRB = makeDesignCrb(camera);
-//				mCaptureCRB.addTarget(outputSurface);
-//
-//				autoCRB.addTarget(previewSurface); // sloppy controversial
-//				//mCaptureCRB.addTarget(previewSurface); // sloppy controversial
-//
-//				mCaptureCRB.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_OFF);
-//				mCaptureCRB.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_OFF);
-//                autoCRB.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_OFF);
-//                autoCRB.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_OFF);
-//
-//				if (mAFsetting>0 || mAEsetting>0) {
-//					Log.v(appFragment.APP_TAG,"Some Auto is to be used. Establishing repeat capture request.");
-//
-//					if (mAFsetting==0){
-//                        // WAITING_FOR_AF comes first IF it is used. But if it's not, set WAITING_FOR_AE
-//						autoState = WAITING_FOR_AE;
-//					} else {
-//                        // We are going to use AF at least for the first image
-//						autoState = WAITING_FOR_AF;
-//						autoCRB.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
-//						autoCRB.set(CaptureRequest.CONTROL_AF_TRIGGER,CaptureRequest.CONTROL_AF_TRIGGER_START);
-//                        // set the capture CRB to the same mode as the auto CRB, because changing it
-//                        // will reset the lens state to idle and ruin the locked focus
-//                        mCaptureCRB.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
-//					}
-//
-//					if (mAEsetting>0) {
-//                        //We are going to use AE for at least the first image
-//                        autoCRB.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON);
-//						autoCRB.set(CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER,CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER_START);
-//                        // set the capture CRB to the same mode as the auto CRB, because changing it
-//                        // will reset the AE state to idle and ruin the locked AE
-//                        mCaptureCRB.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON);
-//					}
-//
-//                    // Initiate repeating Auto captures and watch for the right states
-//					mSession.setRepeatingRequest(autoCRB.build(), autoCCB, mBackgroundHandler);
-//				} else {
-//					Log.v(appFragment.APP_TAG,"No Auto anything. Posting first CaptureNextExposure.");
-//					mBackgroundHandler.post(new CaptureNextExposure());
-//				}
-//
-//			} catch (CameraAccessException cae){
-//				cae.printStackTrace();
-//			}
-//		}
-//
-//	}
+}

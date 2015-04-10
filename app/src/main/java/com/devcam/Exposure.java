@@ -5,8 +5,17 @@
  * - aperture
  * - focal length
  * - focus distance
- *
  * Every other property of an output frame is considered an image property, not a photographic one.
+ *
+ * Exposure objects can have "variable" parameter values, which means the actual parameter value is
+ * undefined but there is a twin value which contains a string telling how to generate it from
+ * a CaptureResult. If any parameter of the Exposure is not defined explicitly, it has flag for this
+ * which you can poll with hasVariableValues();
+ *
+ * Before getting exposure parameter values from an Exposure object, make sure it actually has the
+ * explicit values by
+ *    (1) checking hasVariableValues()
+ *       if true, (2) generating explicit values from a CaptureResult using fixValues().
  */
 
 package com.devcam;
@@ -27,11 +36,14 @@ public class Exposure {
     final static String UPPER ="UPPER";
 
     private boolean mHasVariables = false;
+    // Variable forms for the parameters
     private String mExposureTimeVar = null;
     private String mSensitivityVar = null;
     private String mApertureVar = null;
     private String mFocalLengthVar = null;
     private String mFocusDistanceVar = null;
+
+    // Explicit, numeric values of the parameters
 	private Long mExposureTime;
 	private Integer mSensitivity;
 	private Float mAperture;
@@ -52,6 +64,24 @@ public class Exposure {
 	}
     // - - - - -  end constructors - - - - -
 
+
+    /* void fixValues(CameraCharacteristics, CaptureResult)
+     *
+     * Method for filling in any parameter values which are described as variables with actual
+     * explicit numeric values based on a CaptureResult. Typically the CaptureResult was generated
+     * using the A3 algorithms and contains values "reasonable for the scene" which can be used as
+     * variables and then manipulated (well, multiplied).
+     *
+     * Note the current form uses the CameraCharacteristics as well to allow the user to define
+     * variables LOWER, AUTO, UPPER, but the documentation currently only describes the AUTO
+     * function. It is unclear if the LOWER and UPPER functions are useful, since the user should
+     * have knowledge of these values explicitly from their cameraReport.json.
+     *
+     * This function also currently assumes explicitly the variable form "x*AUTO" where x is a
+     * numeric value of the correct format. It was loosely checked to fit this form (doesn't check
+     * against forms like "10.43.256") in the loadDesignFromJson() function in the CaptureDesign
+     * class.
+     */
     void fixValues(CameraCharacteristics camChars, CaptureResult autoResult){
         // Check to see if exposure time is variable-based
         if (mExposureTimeVar != null){
@@ -143,10 +173,10 @@ public class Exposure {
     }
 
 
-
     // String form just simply displays the parameters readably
     @Override
     public String toString(){
+        // Display the variable values if they exist. Otherwise, display the literals that should exist.
         String stringform =
                 ((mApertureVar!=null)? mApertureVar + ", " : "f" + mAperture + ", ") +
                 ((mExposureTimeVar!=null)? mExposureTimeVar + ", " : CameraReport.nsToString(mExposureTime) + ", ") +
@@ -157,7 +187,12 @@ public class Exposure {
         return stringform;
     }
 
-	// - - - - - Setters and Getters - - - - -
+	/* - - - - - Setters and Getters - - - - -
+     * Note that the following use "set"/"get" for literal parameter values, and "record" for
+     * variable (string) parameter values. Effectively, the Exposure doesn't have any literal values
+     * until they have been set, either with the set() functions or fixExposure(), above.
+     */
+
 	public Long getExposureTime() {
 		return mExposureTime;
 	}
@@ -188,6 +223,10 @@ public class Exposure {
 	public void setFocusDistance(Float mFocusDistance) {
 		this.mFocusDistance = mFocusDistance;
 	}
+
+    // As soon as any parameter has a variable value, this exposure is "not legit" and will need
+    // fixing before being read into a CaptureRequest. So as soon as a recordXXXvar() method is
+    // called, set the flag indicating variable values to true.
 
     public void recordExposureTimeVar(String var){
         mExposureTimeVar = var;

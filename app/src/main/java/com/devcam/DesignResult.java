@@ -76,7 +76,11 @@ public class DesignResult {
 
     /* void recordCaptureResult(CaptureResult)
      *
-     *
+     * Whenever a new CaptureResult is available from the onCaptureComplete() call, record it in the
+     * DesignResult. Compare with the Images which have been generated and stored, to see if any
+     * match. If so, call the function which initiates writing the frame to disk, so it can be
+     * saved and the Image buffer freed ASAP. If not, record it later for when the right Image comes
+     * in.
      *
      */
 	public void recordCaptureResult(CaptureResult result){
@@ -95,6 +99,15 @@ public class DesignResult {
 		Log.v(appFragment.APP_TAG,"No existing Image found. Storing for later.");
 	}
 
+
+    /* void recordImage(Image)
+     *
+     * Whenever a new Image is available from the ImageReader, record it in the DesignResult.
+     * Compare with the CaptureResults which have already been generated and stored, to see if any
+     * match. If so, call the function which initiates writing the frame to disk, so it can be
+     * saved and the Image buffer freed ASAP. If not, record it for later for when the right
+     * CaptureResult comes in.
+     */
 	public void recordImage(Image image){
 		for (CaptureResult result : mCaptureResults){
 			if (result.get(CaptureResult.SENSOR_TIMESTAMP)==image.getTimestamp()){
@@ -112,10 +125,17 @@ public class DesignResult {
 
 
 
-
+    /* void checkIfComplete()
+     *
+     * Function called whenever an Image/CaptureResult pair has been registered, associated, and
+     * passed out for writing to disk. Since a filename is created for that frame only once this
+     * happens, we use the length of the filename list to indicate how many frames of the total
+     * expected number have been captured/saved.
+     * Once all frames have been captured and saved, invoke the CaptureDesignCallback's onFinished()
+     * method to inform the main Activity class.
+     */
 
     private void checkIfComplete(){
-        // Check to see if entire sequence has been captured
         if (mFilenames.size()==mDesignLength){
             Log.v(appFragment.APP_TAG,"DesignResult: Capture Sequence Complete. Saving results. ");
             mDesign.getCallback().onFinished(this);
