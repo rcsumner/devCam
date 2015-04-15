@@ -66,7 +66,7 @@
                 android:background="@color/trans_white"
                 android:layout_gravity="top|right"
                 android:textColor="@color/trans_black" />
-       
+
 
             <LinearLayout
                 android:layout_width="wrap_content"
@@ -97,7 +97,7 @@
                 android:background="@color/take_red"
                 android:minHeight="20dp"
                 android:minWidth="20dp"
-                android:text="Capture!"
+                android:text="@string/captureText"
                 android:textSize="35sp" />
 
             <TextView
@@ -113,6 +113,49 @@
                 android:textAppearance="?android:attr/textAppearanceLarge" />
 
         </FrameLayout>
+
+        <LinearLayout
+            android:orientation="horizontal"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textAppearance="?android:attr/textAppearanceSmall"
+                android:text="5 sec delay :   "
+                android:id="@+id/textView2"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textAppearance="?android:attr/textAppearanceSmall"
+                android:text="Off"
+                android:id="@+id/textView3" />
+
+            <Switch
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textOff="Off"
+                android:textOn="On"
+                android:id="@+id/delaySwitch"
+                android:switchMinWidth="70dp"
+                android:showText="false"
+                android:layout_marginRight="5dp"
+                android:layout_marginLeft="5dp"
+                android:layout_marginTop="0dp"
+                android:layout_marginBottom="0dp" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textAppearance="?android:attr/textAppearanceSmall"
+                android:text="On"
+                android:id="@+id/textView" />
+
+        </LinearLayout>
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -133,18 +176,13 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1" 
 				android:cursorVisible="false"
-                android:gravity="center_horizontal">
+                android:gravity="center_horizontal"
+                android:layout_marginTop="-5dp"
+                android:layout_marginBottom="-5dp">
                 <requestFocus />
             </EditText>
 
         </LinearLayout>
-
-        <TextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Create Capture Design"
-            android:textSize="12dp"
-            android:layout_gravity="center"/>
 
         <LinearLayout
             android:layout_width="match_parent"

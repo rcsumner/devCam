@@ -21,7 +21,10 @@ import android.hardware.camera2.TotalCaptureResult;
 import android.hardware.camera2.params.StreamConfigurationMap;
 import android.media.Image;
 import android.media.ImageReader;
+import android.media.MediaScannerConnection;
+import android.net.Uri;
 import android.os.Bundle;
+import android.os.CountDownTimer;
 import android.os.Environment;
 import android.os.Handler;
 import android.os.HandlerThread;
@@ -39,10 +42,12 @@ import android.view.ViewGroup;
 import android.view.inputmethod.EditorInfo;
 import android.widget.ArrayAdapter;
 import android.widget.Button;
+import android.widget.CompoundButton;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ListView;
+import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -89,6 +94,7 @@ public class appFragment extends Fragment {
     // - - - - Class Member Variables - - - -
 
     // GUI-related member variables
+    private Switch mDelaySwitch;
     private Button mLoadDesignButton;
     private Button mCaptureButton;
     private Button mOutputFormatButton;
@@ -147,6 +153,7 @@ public class appFragment extends Fragment {
     // Array of names of JSON CaptureDesign files in appropriate directory
     private String[] mFileNames;
 
+    boolean mUseDelay = false; // flag reflecting state of the delay switch
     boolean mInadequateCameraFlag = false; // flag for camera device that can't handle this app
 
     // The CaptureDesign the app is working with at the moment
@@ -408,13 +415,27 @@ public class appFragment extends Fragment {
             File IM_SAVE_DIR = new File(appFragment.CAPTURE_DIR,mDesign.getDesignName());
 
             // First, save JSON file with array of metadata
-            File file = new File(IM_SAVE_DIR,mDesign.getDesignName() + "_capture_metadata"+".json");
+            File metadataFile = new File(IM_SAVE_DIR,mDesign.getDesignName() + "_capture_metadata"+".json");
 
-            CameraReport.writeCaptureResultsToFile(designResult.getCaptureResults(), designResult.getFilenames(), file);
+            List<String> imageFileNames = designResult.getFilenames();
+
+            CameraReport.writeCaptureResultsToFile(designResult.getCaptureResults(),imageFileNames, metadataFile);
 
             // Now, write out a txt file with the information of the original
             // request for the capture design, to see how it compares with results
-            mDesign.writeOut(new File(IM_SAVE_DIR,mDesign.getDesignName()+"_design_request"+".txt"));
+            File requestFile = new File(IM_SAVE_DIR,mDesign.getDesignName()+"_design_request"+".txt");
+            mDesign.writeOut(requestFile);
+
+            // Now send the file names of every file just created for this
+            // CaptureDesign to the system's record via the media scanner
+            String[] filePathsToAdd = new String[imageFileNames.size()+2];
+            int i=0;
+            for(String img : imageFileNames){
+                filePathsToAdd[i++]=new File(IM_SAVE_DIR,img).getAbsolutePath();
+            }
+            filePathsToAdd[i++]=metadataFile.getAbsolutePath();
+            filePathsToAdd[i++]=requestFile.getAbsolutePath();
+            addFilesToMTP(filePathsToAdd);
 
 
             // Make a new CaptureDesign based on the current
@@ -559,6 +580,15 @@ public class appFragment extends Fragment {
 		 * correspond to the arrays of values the return index goes into.
 		 */
 
+        // Set up delay timer switch
+        mDelaySwitch = (Switch) v.findViewById(R.id.delaySwitch);
+        mDelaySwitch.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+            @Override
+            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+                mUseDelay = isChecked;
+            }
+        });
+
         // Set up output format button
         mOutputFormatButton = (Button) v.findViewById(R.id.Button_formatChoice);
         mOutputFormatButton.setOnClickListener(new OnClickListener() {
@@ -672,17 +702,30 @@ public class appFragment extends Fragment {
                     // will be called when it finishes capturing all of the frames.
                     mDesign.registerCallback(mDesignCaptureCallback);
 
+                    // Turn off the buttons so the user doesn't accidentally mess up capture
+                    setButtonsClickable(false);
+
                     // Now, tell the CaptureDesign to actually start the capture
-                    // process and hand it the relevant pieces! Note the
+                    // process and hand it the relevant pieces. Note the
                     // CaptureDesign class actually handles all of the commands to
                     // the camera.
 
-                    setButtonsClickable(false);
-                    mDesign.startCapture(mCamera, mCaptureSession, mImageReader.getSurface(),
-                            mPreviewSurfaceHolder.getSurface(), mBackgroundHandler,mAutoResult,mCamChars);
-                    // inform user sequence is being captured
-                    mCapturingDesignTextView.setVisibility(View.VISIBLE);
-                    mCaptureButton.setVisibility(View.INVISIBLE);
+                    // But first, check to see if we should use a delay timer or not.
+                    long delay = (mUseDelay)? 5000 : 0;
+                    CountDownTimer countDownTimer = new CountDownTimer(delay, 1000) {
+                        public void onTick(long secondsTillFinish){
+                            mCaptureButton.setText((secondsTillFinish/1000) + " s");
+                        }
+                        public void onFinish(){
+                            mDesign.startCapture(mCamera, mCaptureSession, mImageReader.getSurface(),
+                                    mPreviewSurfaceHolder.getSurface(), mBackgroundHandler,mAutoResult,mCamChars);
+                            // inform user sequence is being captured
+                            mCapturingDesignTextView.setVisibility(View.VISIBLE);
+                            mCaptureButton.setVisibility(View.INVISIBLE);
+                            mCaptureButton.setText(R.string.captureText);
+                        }
+                    };
+                    countDownTimer.start();
                 }
             }
         });
@@ -1243,6 +1286,8 @@ public class appFragment extends Fragment {
         File file = new File(appFragment.APP_DIR,"cameraReport.json");
         CameraReport.writeCharacteristicsToFile(meta, file);
 
+        addFileToMTP(file.getAbsolutePath());
+
         Log.v(APP_TAG,CameraReport.cameraConstantStringer("android.graphics.ImageFormat",ImageFormat.YV12));
     }
 
@@ -1263,6 +1308,32 @@ public class appFragment extends Fragment {
         mExposureButton.setClickable(onoff);
         mProcessingButton.setClickable(onoff);
         mSplitAmountButton.setClickable(onoff);
+    }
+
+
+
+    /* void addFilesToMTP(String[])
+     *
+     * Adds files with full paths indicated in the input string array to be 
+     * recognized by the system via the mediascanner.
+     */
+    public void addFilesToMTP(String[] filePathsToAdd){
+        MediaScannerConnection.scanFile(getActivity(),filePathsToAdd,null,
+                new MediaScannerConnection.OnScanCompletedListener() {
+                    public void onScanCompleted(String path, Uri uri) {
+                        Log.i("ExternalStorage", "Scanned " + path + ":");
+                        Log.i("ExternalStorage", "-> uri=" + uri);
+                    }
+                });
+    }
+
+    /* void addFileToMTP(String)
+     *
+     * Adds a file with full path indicated by input string to be recognized
+     * by the system via the mediascanner.
+     */
+    public void addFileToMTP(String file){
+        addFilesToMTP(new String[]{file});
     }
 
 

@@ -68,7 +68,7 @@ public class ExposureArrayAdapter extends ArrayAdapter<Exposure> {
 
         // Display the item number on the left of the list item
         TextView positionTV = (TextView) exposureView.findViewById(R.id.positionTextView);
-        positionTV.setText(String.valueOf(position+1));
+        positionTV.setText(String.valueOf(position+1)+"|");
 
         // Now set the Exposure parameter values accordingly
         TextView apertureTV = (TextView) exposureView.findViewById(R.id.EapertureTV);

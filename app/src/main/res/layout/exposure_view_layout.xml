@@ -14,7 +14,7 @@
             android:id="@+id/positionTextView"
             android:layout_gravity="center_vertical"
             android:textStyle="bold"
-            android:layout_marginRight="-8dp"
+            android:layout_marginRight="-6dp"
             android:layout_marginLeft="3dp"/>
 
         <LinearLayout
