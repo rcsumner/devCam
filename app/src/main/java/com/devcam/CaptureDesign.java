@@ -42,23 +42,39 @@ public class CaptureDesign {
     DesignCaptureCallback mRegisteredCallback;
 
 
-    // Label string arrays relating to the CaptureDesign possibilities for
-    // these three capture options.
-    final static String[] FOCUS_CHOICES = {"MANUAL", "AUTO ONCE, LOCK", "AUTO BEFORE ALL"};
-    final static String[] EXPOSURE_CHOICES = {"MANUAL", "AUTO ONCE, LOCK", "AUTO BEFORE ALL"};
-    static final Integer MANUAL = 0;
-    static final Integer AUTO_FIRST = 1;
-    static final Integer AUTO_ALL = 2;
+    // This enumeration is for the possible Processing choices Unfortunately, since a number of
+    // Android-specific things Intent.putExtra() only work with ints, there still needs to be a
+    // value associated with each enum, which is used as an index into an array in some places.
+    public enum ProcessingChoice {
+        NONE(0),
+        FAST(1),
+        HIGH_QUALITY(2);
 
-    final static String[] PROCESSING_CHOICES = {"NONE", "FAST", "HIGH QUALITY"};
-    static final Integer NONE = 0;
-    static final Integer FAST = 1;
-    static final Integer HIGH_QUALITY = 2;
+        private final int index;
 
-    // Actual variables for the CaptureDesign's auto Intents
-    private Integer mAFsetting = MANUAL;
-    private Integer mAEsetting = MANUAL;
-    private Integer mProcessingSetting = FAST;
+        // Constructor for initialized value
+        private ProcessingChoice(int ind) {
+            this.index = ind;
+        }
+
+        public int getIndex() {
+            return index;
+        }
+
+        // Static function for finding the choice enum by its int value
+        public static ProcessingChoice getChoiceByIndex(int ind) {
+            ProcessingChoice output = null;
+            for (ProcessingChoice t : ProcessingChoice.values()) {
+                if (t.getIndex() == ind) {
+                    output = t;
+                }
+            }
+            return output;
+        }
+    }
+
+    // Actual variable for the CaptureDesign's processing Intent
+    private ProcessingChoice mProcessingSetting = ProcessingChoice.FAST;
 
 
     // These camera2-related things are not fundamental to the CaptureDesign concept, but are
@@ -66,18 +82,19 @@ public class CaptureDesign {
     CameraCaptureSession mSession;
     Handler mBackgroundHandler;
     CaptureRequest.Builder mCaptureCRB;
-
-    // Once capture has started, this keeps track of progress in the Exposure sequence
-    private Iterator<Exposure> mExposureIt;
+    CameraCharacteristics mCamChars;
 
     private int mNumCaptured; // tracks the number of images actually captured, not just posted
 
 
-    // State variable and possible static values for the auto-focus/exposure state machine
-    Integer autoState;
-    final Integer WAITING_FOR_AF = 0;
-    final Integer WAITING_FOR_AE = 1;
 
+    // State variable and possible static values for the auto-focus/exposure state machine
+    private enum AutoState {WAITING_FOR_AF, WAITING_FOR_AE}
+    AutoState state;
+
+    // Flags to indicate which auto-processes are needed.
+    private boolean mNeedsAF;
+    private boolean mNeedsAE;
 
 
 
@@ -96,8 +113,6 @@ public class CaptureDesign {
     public CaptureDesign(CaptureDesign design){
         this();
         mExposures = design.getExposures();
-        mAFsetting = design.getFocusSetting();
-        mAEsetting = design.getExposureSetting();
         mProcessingSetting = design.getProcessingSetting();
     }
 
@@ -114,55 +129,31 @@ public class CaptureDesign {
             crb.set(CaptureRequest.CONTROL_AF_MODE,CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
 
             // Make different settings based on Processing desired
-            if (mProcessingSetting==NONE){
-                crb.set(CaptureRequest.EDGE_MODE, CaptureRequest.EDGE_MODE_OFF);
-                //crb.set(CaptureRequest.NOISE_REDUCTION_MODE, CaptureRequest.NOISE_REDUCTION_MODE_OFF); // Causes error?!
-                crb.set(CaptureRequest.TONEMAP_MODE, CaptureRequest.TONEMAP_MODE_CONTRAST_CURVE);
-                float[] linear = {TonemapCurve.LEVEL_BLACK, TonemapCurve.LEVEL_BLACK,
-                        TonemapCurve.LEVEL_WHITE, TonemapCurve.LEVEL_WHITE};
-                crb.set(CaptureRequest.TONEMAP_CURVE, new TonemapCurve(linear,linear,linear));
-                return crb;
+            switch (mProcessingSetting) {
+                case NONE :
+                    crb.set(CaptureRequest.EDGE_MODE, CaptureRequest.EDGE_MODE_OFF);
+                    //crb.set(CaptureRequest.NOISE_REDUCTION_MODE, CaptureRequest.NOISE_REDUCTION_MODE_OFF); // Causes error?!
+                    crb.set(CaptureRequest.TONEMAP_MODE, CaptureRequest.TONEMAP_MODE_CONTRAST_CURVE);
+                    float[] linear = {TonemapCurve.LEVEL_BLACK, TonemapCurve.LEVEL_BLACK,
+                            TonemapCurve.LEVEL_WHITE, TonemapCurve.LEVEL_WHITE};
+                    crb.set(CaptureRequest.TONEMAP_CURVE, new TonemapCurve(linear,linear,linear));
+                    break;
+                case FAST :
+                    crb.set(CaptureRequest.EDGE_MODE, CaptureRequest.EDGE_MODE_FAST);
+                    crb.set(CaptureRequest.NOISE_REDUCTION_MODE, CaptureRequest.NOISE_REDUCTION_MODE_FAST);
+                    crb.set(CaptureRequest.TONEMAP_MODE, CaptureRequest.TONEMAP_MODE_FAST);
+                    break;
+                case HIGH_QUALITY :
+                    crb.set(CaptureRequest.EDGE_MODE, CaptureRequest.EDGE_MODE_HIGH_QUALITY);
+                    crb.set(CaptureRequest.NOISE_REDUCTION_MODE, CaptureRequest.NOISE_REDUCTION_MODE_HIGH_QUALITY);
+                    crb.set(CaptureRequest.TONEMAP_MODE, CaptureRequest.TONEMAP_MODE_HIGH_QUALITY);
+                    break;
             }
+        return crb;
 
-            if (mProcessingSetting==FAST){
-                crb.set(CaptureRequest.EDGE_MODE, CaptureRequest.EDGE_MODE_FAST);
-                crb.set(CaptureRequest.NOISE_REDUCTION_MODE, CaptureRequest.NOISE_REDUCTION_MODE_FAST);
-                crb.set(CaptureRequest.TONEMAP_MODE, CaptureRequest.TONEMAP_MODE_FAST);
-                return crb;
-            }
-
-            if (mProcessingSetting==HIGH_QUALITY){
-                crb.set(CaptureRequest.EDGE_MODE, CaptureRequest.EDGE_MODE_HIGH_QUALITY);
-                crb.set(CaptureRequest.NOISE_REDUCTION_MODE, CaptureRequest.NOISE_REDUCTION_MODE_HIGH_QUALITY);
-                crb.set(CaptureRequest.TONEMAP_MODE, CaptureRequest.TONEMAP_MODE_HIGH_QUALITY);
-                return crb;
-            }
         } catch (CameraAccessException cae){
             cae.printStackTrace();
             return null;
-        }
-        // This will never be reached, but compiler requires it
-        return null;
-    }
-
-
-    /* void updateCRB()
-     *
-     * Update the CaptureRequest.Builder being used so that it has the values of the next Exposure
-     * in the sequence. This happens whenever we are ready to move onto a new desired frame of the
-     * sequence. The iterator increments and sets up the capture request builder with the correct
-     * parameters.
-     */
-    private void updateCRB(){
-
-        if (mExposureIt.hasNext()){
-            Log.v(appFragment.APP_TAG,"Updating CaptureRequest Builder to values for Exposure " + (mNumCaptured+1));
-            Exposure next = mExposureIt.next();
-            mCaptureCRB.set(CaptureRequest.SENSOR_EXPOSURE_TIME, next.getExposureTime());
-            mCaptureCRB.set(CaptureRequest.SENSOR_SENSITIVITY, next.getSensitivity());
-            mCaptureCRB.set(CaptureRequest.LENS_APERTURE, next.getAperture());
-            mCaptureCRB.set(CaptureRequest.LENS_FOCAL_LENGTH, next.getFocalLength());
-            mCaptureCRB.set(CaptureRequest.LENS_FOCUS_DISTANCE, next.getFocusDistance());
         }
     }
 
@@ -214,6 +205,7 @@ public class CaptureDesign {
      * parameter values.
      */
     void fillAutoValues(CameraCharacteristics camChars,CaptureResult autoResult){
+        Log.v(appFragment.APP_TAG,"Filling in Exposure values based on CaptureResult.");
         for (Exposure exp : mExposures){
             if (exp.hasVariableValues()){
                 exp.fixValues(camChars,autoResult);
@@ -225,7 +217,7 @@ public class CaptureDesign {
 
 
     /* void startCapture(CameraDevice, CameraCaptureSession, output Surface, preview Surface,
-     * Handler, CaptureResult, CameraCharacteristics)
+     * Handler, CameraCharacteristics)
      *
      * Begins the capture process of the entire CaptureDesign.
      * The first four arguments are necessary for this class to control the camera device and
@@ -254,12 +246,12 @@ public class CaptureDesign {
                              Surface outputSurface,
                              Surface previewSurface,
                              Handler backgroundHandler,
-                             CaptureResult autoResult,
                              CameraCharacteristics camChars){
 
         // Store the two pieces related to camera control which we will need later in callbacks
         mSession = session;
         mBackgroundHandler = backgroundHandler;
+        mCamChars = camChars;
 
         // If there are no exposures in the list to capture, just exit.
         if (mExposures.size()==0){
@@ -267,13 +259,8 @@ public class CaptureDesign {
             return;
         }
 
-        // Now see if the exposure parameters should be derived from the AE/AF values or not,
-        // and give them explicit values if so
-        fillAutoValues(camChars,autoResult);
-
         // Initialize before capture
         mNumCaptured = 0;
-        mExposureIt = mExposures.iterator();
 
         // Create a new (blank) DesignResult for this design
         mDesignResult = new DesignResult(mDesignName,mExposures.size(),this);
@@ -294,31 +281,56 @@ public class CaptureDesign {
             mCaptureCRB.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_OFF);
             mCaptureCRB.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_OFF);
 
-            // If all of manually-set parameters are to be used, just capture the burst, stat,
-            // using the current exposure and focus values.
-            if (mAFsetting == MANUAL && mAEsetting == MANUAL){
+
+            // Now loop over all Exposures in the sequence, and see if any of them require
+            // 1) any Auto at all
+            // 2) Auto focus
+            // 3) Auto exposure
+            // Keep track for later.
+            int withoutVariables=0;
+            mNeedsAF = false;
+            mNeedsAE = false;
+            for (Exposure e : mExposures){
+                if (!e.hasVariableValues()){
+                    withoutVariables++;
+                }
+
+                if (e.hasVariableFocusDistance()){
+                    mNeedsAF = true;
+                }
+
+                if (e.hasVariableSensitivity()
+                        || e.hasVariableExposureTime()
+                        || e.hasVariableAperture()){
+                    mNeedsAE = true;
+                }
+            }
+
+            // If the Exposures don't require ANY Auto information, i.e. if all parameter values
+            // were explicit, simply capture the burst.
+            if (withoutVariables==mExposures.size()){
+                Log.v(appFragment.APP_TAG,"No Auto needed, simply capturing burst.");
                 captureSequenceBurst();
                 return;
             }
 
-            // Otherwise, use the callback that continues posting single captures until it hits
-            // desired auto-state convergence. First, give this request the values of the first
-            // Exposure in the list so that they will be set for either auto process that is NOT
-            // used.
-            updateCRB();
+
+            // Otherwise, we want the auto-process capture sequence to start. Note we need the
+            // CaptureRequests that are used here to have the same MODES as the target frame
+            // CaptureRequests, otherwise their states will reset, causing trouble.
 
 
             // Now set the auto controls as desired, and the states accordingly. Note that we use
             // a state machine that goes from determining focus to determining exposure, so we
             // only change the state to WAITING_FOR_AE if the we are not waiting for AF first
-            if (mAFsetting !=MANUAL){
-                autoState = WAITING_FOR_AF;
+            if (mNeedsAF){
+                state = AutoState.WAITING_FOR_AF;
                 mCaptureCRB.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
                 mCaptureCRB.set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_START);
             }
 
-            if (mAEsetting !=MANUAL){
-                if (mAFsetting ==0) autoState = WAITING_FOR_AE;
+            if (mNeedsAE){
+                if (!mNeedsAF) state = AutoState.WAITING_FOR_AE;
                 mCaptureCRB.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON);
                 mCaptureCRB.set(CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER, CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER_START);
             }
@@ -343,7 +355,7 @@ public class CaptureDesign {
                                        CaptureRequest request,TotalCaptureResult result){
             Log.v(appFragment.APP_TAG,"Auto State Check-in! - - - ");
 
-            if (WAITING_FOR_AF==autoState){
+            if (AutoState.WAITING_FOR_AF==state){
                 Integer afState = result.get(CaptureResult.CONTROL_AF_STATE);
                 Log.v(appFragment.APP_TAG,"- - - AF_STATE: " +CameraReport.sContextMap.get("android.control.afState").get(afState));
 
@@ -353,11 +365,11 @@ public class CaptureDesign {
                         || CaptureResult.CONTROL_AF_STATE_NOT_FOCUSED_LOCKED==afState){
                     Log.v(appFragment.APP_TAG,"- - - AF Converged.");
 
-                    if (mAEsetting != AUTO_ALL){
-                        Log.v(appFragment.APP_TAG,"- - - Not requiring AE convergence. Posting next Capture.");
-                        finishWithAuto();
+                    if (!mNeedsAE){
+                        Log.v(appFragment.APP_TAG,"- - - Not requiring AE convergence.");
+                        finishWithAuto(result);
                     } else {
-                        autoState = WAITING_FOR_AE;
+                        state = AutoState.WAITING_FOR_AE;
                     }
 
 
@@ -377,13 +389,13 @@ public class CaptureDesign {
                 }
             }
 
-            if (WAITING_FOR_AE==autoState){
+            if (AutoState.WAITING_FOR_AE==state){
                 Integer aeState = result.get(CaptureResult.CONTROL_AE_STATE);
                 Log.v(appFragment.APP_TAG,"- - - AE_STATE: " +CameraReport.sContextMap.get("android.control.aeState").get(aeState));
                 if (CaptureResult.CONTROL_AE_STATE_CONVERGED==aeState ||
                         CaptureResult.CONTROL_AE_STATE_FLASH_REQUIRED==aeState) {
-                    Log.v(appFragment.APP_TAG,"- - - AE converged. Posting next Capture.");
-                    finishWithAuto();
+                    Log.v(appFragment.APP_TAG,"- - - AE converged.");
+                    finishWithAuto(result);
                 } else {
                     try {
                         // Auto process is already in progress, so we don't need/want triggers to start them again
@@ -399,43 +411,20 @@ public class CaptureDesign {
         }
 
 
-        /* void finishWithAuto()
+        /* void finishWithAuto(CaptureResult)
          *
          * This gets called by the callback when the desired auto-processes have converged. Now that
          * the state has been met, we can lock the values from it and capture either the entire
          * burst (if this is the first time called and we only wanted AUTO ONCE, LOCK intent for
          * both processes) or the next target frame in the Exposure sequence.
          */
-        private void finishWithAuto(){
-            Log.v(appFragment.APP_TAG,"- - - Finished with this frame's Auto sequence. Posting CaptureNextExposure().");
+        private void finishWithAuto(CaptureResult result){
+            Log.v(appFragment.APP_TAG,"- - - Finished with the pre-capture Auto sequence.");
 
             // If either Auto process was being used for only the first frame, let us now just
             // post a burst capture since the state is converged.
-            if (mAEsetting != AUTO_ALL && mAFsetting != AUTO_ALL){
-                captureSequenceBurst();
-                return;
-            }
-
-            // Otherwise, at least one auto process will be recurring for all frames, so only
-            // capture the next frame with this converged state, and then let another
-            // converging process begin in the onCaptureCompleted() callback
-            try {
-                // Exposure settings have already been set for mCaptureCRB.
-                // Ensure that a new AE/AF search will not be started, and that AE is locked
-                mCaptureCRB.set(CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER, CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER_IDLE);
-                mCaptureCRB.set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_IDLE);
-                mCaptureCRB.set(CaptureRequest.CONTROL_AE_LOCK,true);
-                mSession.capture(mCaptureCRB.build(),frameCCB,mBackgroundHandler);
-
-                // This approach of starting a new capture instead of just using the current result
-                // is suboptimal for time, but the user has already sacrificed that by using an
-                // auto- process for every capture. This could be re-engineered later to be less
-                // time sloppy, but would require re-jiggering the ImageReader.Callback to know when
-                // to save an image sent to it.
-
-            } catch (CameraAccessException cae){
-                cae.printStackTrace();
-            }
+            fillAutoValues(mCamChars,result);
+            captureSequenceBurst();
 
         }
     };
@@ -475,40 +464,6 @@ public class CaptureDesign {
                 return;
             }
 
-            // The following code is only run if there are more images to capture AND some auto
-            // Intent is being used. In such a case, a new capture request must be posted to the
-            // session to start the auto exposure/focus process before the next frame is to be
-            // captured.
-
-            // If we are using an auto-process for all exposures, post the next one to start converging
-            if (mAEsetting == AUTO_ALL || mAFsetting == AUTO_ALL) {
-                Log.v(appFragment.APP_TAG,"Still using Auto-something, so posting next convergence trail.");
-                // Set the parameters of the next capture according to the desired settings, to be
-                // disregarded as necessary, or actually used if not overwritten
-                updateCRB();
-
-                // Since we are concerned with AF convergence first, then AE, we set the state in
-                // the reverse order so that it can step "backwards" only when needed.
-
-                if (mAEsetting ==AUTO_ALL){
-                    autoState = WAITING_FOR_AE;
-                    // unlock AE and trigger it again
-                    mCaptureCRB.set(CaptureRequest.CONTROL_AE_LOCK,false);
-                    //mCaptureCRB.set(CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER, CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER_START); // i think this is unnecessary
-                }
-
-                if (mAFsetting == AUTO_ALL){
-                    autoState = WAITING_FOR_AF;
-                    mCaptureCRB.set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_CANCEL);
-                }
-
-                try {
-                    // Post the capture request to return to the auto-state-machine capture callback
-                    mSession.capture(mCaptureCRB.build(), mAutoCCB, mBackgroundHandler);
-                } catch (CameraAccessException cae){
-                    cae.printStackTrace();
-                }
-            }
         }
 
         @Override
@@ -561,9 +516,7 @@ public class CaptureDesign {
             writer.write("Design name: " + mDesignName + "\n");
             writer.write("Capture time: "
                     + DateFormat.getDateTimeInstance().format(new Date(System.currentTimeMillis())) + "\n");
-            writer.write("Focus setting: " + FOCUS_CHOICES[mAFsetting] + "\n");
-            writer.write("Exposure setting: " + EXPOSURE_CHOICES[mAEsetting] + "\n");
-            writer.write("Processing setting: " + PROCESSING_CHOICES[mProcessingSetting] + "\n");
+            writer.write("Processing setting: " + mProcessingSetting + "\n");
             for (int i=0; i<mExposures.size(); i++){
                 writer.write(mExposures.get(i).toString() + "\n");
             }
@@ -592,23 +545,11 @@ public class CaptureDesign {
     public DesignResult getDesignResult(){
         return mDesignResult;
     }
-    public Integer getProcessingSetting(){
+    public ProcessingChoice getProcessingSetting(){
         return mProcessingSetting;
     }
-    public void setProcessingSetting(Integer I){
-        mProcessingSetting = I;
-    }
-    public void setExposureSetting(Integer I){
-        mAEsetting = I;
-    }
-    public void setFocusSetting(Integer I){
-        mAFsetting = I;
-    }
-    public Integer getExposureSetting(){
-        return mAEsetting;
-    }
-    public Integer getFocusSetting(){
-        return mAFsetting;
+    public void setProcessingSetting(ProcessingChoice c){
+        mProcessingSetting = c;
     }
     public void addExposure(Exposure exp){
         mExposures.add(exp);

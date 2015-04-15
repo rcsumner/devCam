@@ -2,13 +2,13 @@ package com.devcam;
 
 import static com.devcam.GenerateDesignFromTemplateActivity.DataTags;
 import static com.devcam.GenerateDesignFromTemplateActivity.DesignTemplate;
+import static com.devcam.CaptureDesign.ProcessingChoice;
 
 import android.app.Activity;
 import android.app.Fragment;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.ImageFormat;
-import android.graphics.Point;
 import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCaptureSession;
 import android.hardware.camera2.CameraCharacteristics;
@@ -29,7 +29,6 @@ import android.os.Environment;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.Message;
-import android.util.JsonWriter;
 import android.util.Log;
 import android.util.Range;
 import android.util.Size;
@@ -40,11 +39,9 @@ import android.view.View;
 import android.view.View.OnClickListener;
 import android.view.ViewGroup;
 import android.view.inputmethod.EditorInfo;
-import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.CompoundButton;
 import android.widget.EditText;
-import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ListView;
 import android.widget.Switch;
@@ -52,10 +49,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import java.io.File;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.OutputStreamWriter;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -71,9 +65,6 @@ public class appFragment extends Fragment {
     // sent to the SelectByLabelActivity class for a result.
     public final static int OUTPUT_FORMAT = 0;
     public final static int OUTPUT_SIZE = 1;
-    public final static int SPLIT_AMOUNTS = 2;
-    public final static int FOCUS_SETTING = 3;
-    public final static int EXPOSURE_SETTING = 4;
     public final static int PROCESSING_SETTING = 5;
     public final static int LOAD_DESIGN = 6;
     public final static int GENERATE_DESIGN = 7;
@@ -99,8 +90,6 @@ public class appFragment extends Fragment {
     private Button mCaptureButton;
     private Button mOutputFormatButton;
     private Button mOutputSizeButton;
-    private Button mFocusButton;
-    private Button mExposureButton;
     private Button mProcessingButton;
     private Button mSplitAmountButton;
     private TextView mInadequateCameraTextView;
@@ -622,43 +611,21 @@ public class appFragment extends Fragment {
         mOutputSizeButton.setText(mOutputSizes[mOutputSizeInd].toString());
 
 
-        // Set up focus button
-        mFocusButton = (Button) v.findViewById(R.id.Button_focusChoice);
-        mFocusButton.setOnClickListener(new OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                Intent intent = new Intent(getActivity(), SelectByLabelActivity.class);
-                intent.putExtra(SelectByLabelActivity.TAG_DATA_LABELS,CaptureDesign.FOCUS_CHOICES);
-                startActivityForResult(intent, FOCUS_SETTING);
-            }
-        });
-        mFocusButton.setText(CaptureDesign.FOCUS_CHOICES[mDesign.getFocusSetting()]);
-
-
-        // Set up exposure button
-        mExposureButton = (Button) v.findViewById(R.id.Button_exposureChoice);
-        mExposureButton.setOnClickListener(new OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                Intent intent = new Intent(getActivity(), SelectByLabelActivity.class);
-                intent.putExtra(SelectByLabelActivity.TAG_DATA_LABELS,CaptureDesign.EXPOSURE_CHOICES);
-                startActivityForResult(intent, EXPOSURE_SETTING);
-            }
-        });
-        mExposureButton.setText(CaptureDesign.EXPOSURE_CHOICES[mDesign.getExposureSetting()]);
-
-
-        // Set up focus button
+        // Set up processing button
         mProcessingButton = (Button) v.findViewById(R.id.Button_processingChoice);
         mProcessingButton.setOnClickListener(new OnClickListener() {
             @Override
             public void onClick(View v) {
                 Intent intent = new Intent(getActivity(), SelectByLabelActivity.class);
-                intent.putExtra(SelectByLabelActivity.TAG_DATA_LABELS,CaptureDesign.PROCESSING_CHOICES);
+                String[] choices = new String[ProcessingChoice.values().length];
+                for (int i=0; i<ProcessingChoice.values().length;i++){
+                    choices[i] = ProcessingChoice.getChoiceByIndex(i).toString();
+                }
+                intent.putExtra(SelectByLabelActivity.TAG_DATA_LABELS,choices);
                 startActivityForResult(intent, PROCESSING_SETTING);
             }
         });
-        mProcessingButton.setText(CaptureDesign.PROCESSING_CHOICES[mDesign.getProcessingSetting()]);
+        mProcessingButton.setText(mDesign.getProcessingSetting().toString());
 
 
         // Set up Load Design button
@@ -718,7 +685,7 @@ public class appFragment extends Fragment {
                         }
                         public void onFinish(){
                             mDesign.startCapture(mCamera, mCaptureSession, mImageReader.getSurface(),
-                                    mPreviewSurfaceHolder.getSurface(), mBackgroundHandler,mAutoResult,mCamChars);
+                                    mPreviewSurfaceHolder.getSurface(), mBackgroundHandler,mCamChars);
                             // inform user sequence is being captured
                             mCapturingDesignTextView.setVisibility(View.VISIBLE);
                             mCaptureButton.setVisibility(View.INVISIBLE);
@@ -859,36 +826,13 @@ public class appFragment extends Fragment {
                 }
                 break;
 
-            // Returned from button push for selecting new focus approach
-            case (FOCUS_SETTING) :
-                if (resultCode == Activity.RESULT_OK) {
-                    // Record choice in the CaptureDesign for when necessary
-                    mDesign.setFocusSetting(data.getIntExtra(SelectByLabelActivity.TAG_SELECTED_INDEX,0));
-                    mFocusButton.setText(CaptureDesign.FOCUS_CHOICES[mDesign.getFocusSetting()]);
-
-                    // Change color-based information of Exposure list accordingly
-                    updateDesignViews();
-                }
-                break;
-
-            // Returned from button push for selecting new exposure approach
-            case (EXPOSURE_SETTING) :
-                if (resultCode == Activity.RESULT_OK) {
-                    // Record choice in the CaptureDesign for when necessary
-                    mDesign.setExposureSetting(data.getIntExtra(SelectByLabelActivity.TAG_SELECTED_INDEX,0));
-                    mExposureButton.setText(CaptureDesign.EXPOSURE_CHOICES[mDesign.getExposureSetting()]);
-
-                    // Change color-based information of Exposure list accordingly
-                    updateDesignViews();
-                }
-                break;
-
             // Returned from button push for selecting new processing approach
             case (PROCESSING_SETTING) :
                 if (resultCode == Activity.RESULT_OK) {
                     // Record choice in the CaptureDesign for when necessary
-                    mDesign.setProcessingSetting(data.getIntExtra(SelectByLabelActivity.TAG_SELECTED_INDEX,0));
-                    mProcessingButton.setText(CaptureDesign.PROCESSING_CHOICES[mDesign.getProcessingSetting()]);
+                    int result = data.getIntExtra(SelectByLabelActivity.TAG_SELECTED_INDEX, 0);
+                    mDesign.setProcessingSetting(CaptureDesign.ProcessingChoice.getChoiceByIndex(result));
+                    mProcessingButton.setText(mDesign.getProcessingSetting().toString());
                     // If High Quality processing requested, stall times not
                     // well defined, so indicate this visually.
                     updateConstraintViews();
@@ -905,8 +849,6 @@ public class appFragment extends Fragment {
                     // misuse of incorrect checked exceptions. Will return to this when possible.
                     try {
                         CaptureDesign newDesign = CaptureDesign.Creator.loadDesignFromJson(file);
-                        newDesign.setExposureSetting(mDesign.getExposureSetting());
-                        newDesign.setFocusSetting(mDesign.getFocusSetting());
                         newDesign.setProcessingSetting(mDesign.getProcessingSetting());
                         mDesign = newDesign;
                     } catch (NoSuchFieldException nsfe){
@@ -1253,7 +1195,7 @@ public class appFragment extends Fragment {
 
         // If High Quality processing required, could be even longer wait times, so
         // indicated this with a "+"
-        if (mDesign.getProcessingSetting().equals(CaptureDesign.HIGH_QUALITY)){
+        if (mDesign.getProcessingSetting()==ProcessingChoice.HIGH_QUALITY){
             mOutputStallValueView.setText(mOutputStallValueView.getText() + "+");
         }
     }
@@ -1304,8 +1246,6 @@ public class appFragment extends Fragment {
         mLoadDesignButton.setClickable(onoff);
         mOutputFormatButton.setClickable(onoff);
         mOutputSizeButton.setClickable(onoff);
-        mFocusButton.setClickable(onoff);
-        mExposureButton.setClickable(onoff);
         mProcessingButton.setClickable(onoff);
         mSplitAmountButton.setClickable(onoff);
     }

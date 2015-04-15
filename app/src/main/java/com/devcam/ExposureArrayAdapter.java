@@ -5,8 +5,7 @@
  * Moreover, it uses other information about the CaptureDesign, such as the Capture Intents, to
  * use colors to visually indicate the nature of each of the parameters in each of the Exposures.
  *
- * e.g. black means the value is explicit/absolute, blue means it is variable-based, and red means
- * it is controlled by an auto result via a Capture Intent.
+ * e.g. black means the value is explicit/absolute, blue means it is variable-based.
  */
 
 package com.devcam;
@@ -56,7 +55,6 @@ public class ExposureArrayAdapter extends ArrayAdapter<Exposure> {
      * exactly as we want.
      * If a value is explicit, color it black.
      * If a value is variable, color it blue.
-     * If either of these value types is to be overridden by an auto Capture Intent, color it red.
      */
     @Override
     public View getView(int position, View convertView, ViewGroup parent) {
@@ -100,24 +98,6 @@ public class ExposureArrayAdapter extends ArrayAdapter<Exposure> {
         if (list.get(position).hasVariableSensitivity()){
             sensitivityTV.setTextColor(Color.BLUE);
         }
-
-
-        // Now, depending on the settings used, give visual indicator of which values are auto,
-        // and which are overridden by the Capture Intents of the Design
-        if (mDesign.getExposureSetting()!=CaptureDesign.MANUAL){
-            apertureTV.setTextColor(Color.RED);
-            apertureTV.setText(R.string.autoWarningText);
-            exposureTimeTV.setTextColor(Color.RED);
-            exposureTimeTV.setText(R.string.autoWarningText);
-            sensitivityTV.setTextColor(Color.RED);
-            sensitivityTV.setText(R.string.autoWarningText);
-        }
-
-        if (mDesign.getFocusSetting()!=CaptureDesign.MANUAL){
-            focusDistanceTV.setTextColor(Color.RED);
-            focusDistanceTV.setText(R.string.autoWarningText);
-        }
-
 
         return exposureView;
     }
