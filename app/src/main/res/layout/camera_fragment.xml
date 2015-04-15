@@ -26,7 +26,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content" >
 
-            <SurfaceView
+            <com.devcam.AutoFitSurfaceView
                 android:id="@+id/surfaceView"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content" />
@@ -122,7 +122,7 @@
             <TextView
                 android:id="@+id/textView1"
                 android:layout_width="wrap_content"
-                android:layout_height="match_parent"
+                android:layout_height="wrap_content"
                 android:gravity="center"
                 android:text="Capture Design ID: "
                 android:textSize="15sp" />
@@ -130,17 +130,25 @@
             <EditText
                 android:id="@+id/designNameEditText"
                 android:layout_width="wrap_content"
-                android:layout_height="match_parent"
+                android:layout_height="wrap_content"
                 android:layout_weight="1" 
-				android:cursorVisible="false">
+				android:cursorVisible="false"
+                android:gravity="center_horizontal">
                 <requestFocus />
             </EditText>
 
         </LinearLayout>
 
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Create Capture Design"
+            android:textSize="12dp"
+            android:layout_gravity="center"/>
+
         <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="fill_parent"
+            android:layout_height="wrap_content"
             android:layout_weight="1"
             android:gravity="center"
             android:orientation="horizontal" >
@@ -150,14 +158,18 @@
                 style="?android:attr/buttonStyleSmall"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Load Design From File" />
+                android:text="@string/loadDesignText"
+                android:paddingTop="1dp"
+                android:paddingBottom="1dp" />
 
             <Button
                 android:id="@+id/splitAmountButton"
                 style="?android:attr/buttonStyleSmall"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="Split AE into Design" />
+                android:text="@string/generateDesignText"
+                android:paddingBottom="1dp"
+                android:paddingTop="1dp" />
 
         </LinearLayout>
 
@@ -272,36 +284,6 @@
                 </LinearLayout>
 
             </LinearLayout>
-        </LinearLayout>
-
-        <LinearLayout
-            android:orientation="horizontal"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="match_parent"
-                android:layout_gravity="left"
-                android:layout_weight="1"
-                android:background="@color/design_background"
-                android:paddingTop="7dp"
-                android:text="Image Output Settings"
-                android:textStyle="bold"
-                android:typeface="@color/exposure_list_background"
-                android:paddingBottom="7dp" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_gravity="right"
-                android:layout_weight="1"
-                android:background="@color/exposure_list_background"
-                android:paddingTop="7dp"
-                android:text="Capture Design Settings"
-                android:textStyle="bold"
-                android:typeface="@color/exposure_list_background"
-                android:paddingBottom="7dp" />
         </LinearLayout>
 
         <LinearLayout

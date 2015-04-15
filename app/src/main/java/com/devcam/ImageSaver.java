@@ -60,7 +60,7 @@ class ImageSaver implements Runnable {
 		}
 
         // Assemble variables to put things
-		File file = new File(SAVE_DIR, mFilename);;
+		File file = new File(SAVE_DIR, mFilename);
 		FileOutputStream output = null;
 		ByteBuffer buffer;
 		byte[] bytes;
@@ -81,6 +81,8 @@ class ImageSaver implements Runnable {
 			} catch (IOException e) {
 				e.printStackTrace();
 			} finally {
+                Log.v(appFragment.APP_TAG,"Closing image to free buffer.");
+                mImage.close(); // close this to free up buffer for other images
 				if (null != output) {
 					try {
 						output.close();
@@ -103,6 +105,8 @@ class ImageSaver implements Runnable {
 			} catch (IOException e) {
 				e.printStackTrace();
 			} finally {
+                Log.v(appFragment.APP_TAG,"Closing image to free buffer.");
+                mImage.close(); // close this to free up buffer for other images
 				dc = null;
 				if (null != output) {
 					try {
@@ -146,6 +150,8 @@ class ImageSaver implements Runnable {
 			} catch (IOException e) {
 				e.printStackTrace();
 			} finally {
+                Log.v(appFragment.APP_TAG,"Closing image to free buffer.");
+                mImage.close(); // close this to free up buffer for other images
 				if (null != output) {
 					try {
 						output.close();
@@ -157,7 +163,6 @@ class ImageSaver implements Runnable {
 			break;
 		}
 
-		mImage.close(); // close this to free up buffer for other images
 	}
 
 }

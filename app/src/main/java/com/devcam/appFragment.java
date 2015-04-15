@@ -1,5 +1,8 @@
 package com.devcam;
 
+import static com.devcam.GenerateDesignFromTemplateActivity.DataTags;
+import static com.devcam.GenerateDesignFromTemplateActivity.DesignTemplate;
+
 import android.app.Activity;
 import android.app.Fragment;
 import android.content.Context;
@@ -30,7 +33,6 @@ import android.util.Size;
 import android.view.KeyEvent;
 import android.view.LayoutInflater;
 import android.view.SurfaceHolder;
-import android.view.SurfaceView;
 import android.view.View;
 import android.view.View.OnClickListener;
 import android.view.ViewGroup;
@@ -69,6 +71,7 @@ public class appFragment extends Fragment {
     public final static int EXPOSURE_SETTING = 4;
     public final static int PROCESSING_SETTING = 5;
     public final static int LOAD_DESIGN = 6;
+    public final static int GENERATE_DESIGN = 7;
 
     // ID tag for inter-thread communication of A3 results from preview results
     public final static int AUTO_RESULTS = 100;
@@ -105,9 +108,9 @@ public class appFragment extends Fragment {
     private ListView mCaptureDesignListView;
     private EditText mDesignNameEditText;
     private TextView mCapturingDesignTextView;
-    private ArrayAdapter<Exposure> mCaptureDesignAdapter;
+    private ExposureArrayAdapter mCaptureDesignAdapter;
 
-    private SurfaceView mPreviewSurfaceView;
+    private AutoFitSurfaceView mPreviewSurfaceView;
     private SurfaceHolder mPreviewSurfaceHolder;
     private ImageReader mImageReader;
 
@@ -141,16 +144,10 @@ public class appFragment extends Fragment {
     // returned from the preview repeating request, used to set realtime values in display
     private CaptureResult mAutoResult;
 
-    // flag for if this is the first time app was launched, as indicated by absence of app directory
-    private boolean mFirstLaunch = false;
-
     // Array of names of JSON CaptureDesign files in appropriate directory
     private String[] mFileNames;
 
     boolean mInadequateCameraFlag = false; // flag for camera device that can't handle this app
-
-    // List of number of exposures to split AE time into using the GUI button
-    private int[] mSplitAmounts = {1,2,3,4,5,6,7,8,9,10};
 
     // The CaptureDesign the app is working with at the moment
     private CaptureDesign mDesign = new CaptureDesign();
@@ -360,6 +357,9 @@ public class appFragment extends Fragment {
                         }
                     }
                     holder.setFixedSize(mTargetSize.getWidth(), mTargetSize.getHeight());
+                    // Wait until now to set the size of the SurfaceView because we didn't know the
+                    // right aspect ratio yet
+                    mPreviewSurfaceView.setAspectRatio(mTargetSize.getWidth(),mTargetSize.getHeight());
                 }
 
                 @Override
@@ -482,14 +482,8 @@ public class appFragment extends Fragment {
     public void onViewCreated(View v, Bundle savedInstanceBundle){
         Log.v(APP_TAG,"onViewCreated() called.");
 
-        // Create folder for app if none exists.
-        if (APP_DIR.mkdir()){
-            // Delay creation of example designs until after camera has been loaded, since we need
-            // metadata from it.
-            mFirstLaunch = true;
-        }
-        // If it couldn't be created, quit.
-        if (!APP_DIR.isDirectory()){
+        // Create main app dir if none exists. If it couldn't be created, quit.
+        if (!(APP_DIR.mkdir() || APP_DIR.isDirectory())){
             Toast.makeText(getActivity(), "Could not create application directory.", Toast.LENGTH_SHORT).show();
             getActivity().finish();
         }
@@ -522,28 +516,17 @@ public class appFragment extends Fragment {
         mMainLinearLayout = (LinearLayout) v.findViewById(R.id.mainLinearLayout);
         mCapturingDesignTextView = (TextView) v.findViewById(R.id.capturingDesignTextView);
 
-        // Set up the preview image SurfaceView so that it maintains the correct
-        // aspect ratio while filling half of the width of the frame.
-        // Sloppy assumption: camera output is 4x3 aspect ratio.
-//        mPreviewSurfaceView.getWidth();
-//        mPreviewSurfaceView.getParent().recomputeViewAttributes();
-//        mPreviewSurfaceView.getParent().
-//        mPreviewFrameLayout = (FrameLayout) v.findViewById(R.id.previewFrameLayout);
-//        Log.v(APP_TAG,"frame width: "+mPreviewFrameLayout.getWidth());
-//        Log.v(APP_TAG,"frame measured width: "+mPreviewFrameLayout.getMeasuredWidth());
-        mPreviewSurfaceView = (SurfaceView) v.findViewById(R.id.surfaceView);
-        Point size = new Point();
-        getActivity().getWindowManager().getDefaultDisplay().getSize(size);
-        int w = Math.max(size.x,size.y)/2;
-//        w = size.x/2;
-//        w = 1550;
-        Log.v(APP_TAG,"w = " + w);
-        mPreviewSurfaceView.setLayoutParams(new FrameLayout.LayoutParams(w,3*w/4));
+        // Set up the preview image AutoFitSurfaceView
+        mPreviewSurfaceView = (AutoFitSurfaceView) v.findViewById(R.id.surfaceView);
+        // Note we don't set the size of it here, because we wait until we know what size and
+        // aspect ratio the camera is, and then fill the width set aside by the layout for it.
+        // (That width being half of the total display width). Sizing is done in the
+        // SurfaceHolder.Callback onCreate() method.
 
-
-
-        mCaptureDesignAdapter = new ArrayAdapter<Exposure>(getActivity(),R.layout.small_text_simple_list_view_1);
+        // Set up our special ArrayAdapter for the List View of Exposures
+        mCaptureDesignAdapter = new ExposureArrayAdapter(getActivity(),mDesign);
         mCaptureDesignListView.setAdapter(mCaptureDesignAdapter);
+
 
         // Update text fields indicating the time constraints for these settings
         mOutputStallValueView.setText(CameraReport.nsToString(mStreamMap.getOutputStallDuration(
@@ -673,18 +656,13 @@ public class appFragment extends Fragment {
         mSplitAmountButton.setOnClickListener(new OnClickListener() {
             @Override
             public void onClick(View v){
-                Intent intent = new Intent(getActivity(), SelectByLabelActivity.class);
-                String[] temp = new String[mSplitAmounts.length];
-                for (int i = 0; i<mSplitAmounts.length; i++){
-                    temp[i] = Integer.toString(mSplitAmounts[i]);
-                }
-                intent.putExtra(SelectByLabelActivity.TAG_DATA_LABELS,temp);
-                startActivityForResult(intent, SPLIT_AMOUNTS);
+                Intent intent = new Intent(getActivity(), GenerateDesignFromTemplateActivity.class);
+                startActivityForResult(intent,GENERATE_DESIGN);
             }
         });
 
 
-        // Set up the button that actual takes the pictures!
+        // Set up the button that actually takes the pictures!
         mCaptureButton = (Button) v.findViewById(R.id.take_burst_button);
         mCaptureButton.setOnClickListener(new OnClickListener(){
             @Override
@@ -728,11 +706,6 @@ public class appFragment extends Fragment {
             mInadequateCameraFlag = true;
             setButtonsClickable(false);
         }
-
-
-        // If this was the first time app was launched, populate the design folder with a few
-        // example CaptureDesign JSONs
-        if(mFirstLaunch){generateExampleDesigns();}
     }
 
 
@@ -773,6 +746,52 @@ public class appFragment extends Fragment {
         Log.v(APP_TAG,"onActivityResult() called.");
 
         switch(requestCode) {
+            // Returned from button push for generating a new Design from template
+            case (GENERATE_DESIGN) :
+                if (resultCode == Activity.RESULT_OK){
+                    float lowBound = data.getFloatExtra(DataTags.LOW_BOUND.toString(),0.0f);
+                    float highBound = data.getFloatExtra(DataTags.HIGH_BOUND.toString(),0.0f);
+                    int nExp = data.getIntExtra(DataTags.N_EXP.toString(),1);
+                    int templateInd = data.getIntExtra(DataTags.TEMPLATE_ID.toString(),0);
+                    Log.v(APP_TAG,"templateInd: " + templateInd +
+                            " nExp: " + nExp +
+                            " low bound: " + lowBound +
+                            " high bound: " + highBound);
+
+                    DesignTemplate template = DesignTemplate.getTemplateByIndex(templateInd);
+                    Log.v(APP_TAG,"Design Template: " + template);
+
+                    switch (template){
+                        case SPLIT_TIME:
+                            mDesign = CaptureDesign.Creator.splitExposureTime(nExp);
+                            break;
+                        case RACK_FOCUS:
+                            Range<Float> focusRange = new Range<Float>(lowBound,highBound);
+                            mDesign = CaptureDesign.Creator.focusBracketAbsolute(mCamChars,focusRange,nExp);
+                            break;
+                        case BRACKET_EXPOSURE_TIME_ABSOLUTE:
+                            Range<Long> expTimeRange = new Range<Long>((long)lowBound,(long)highBound);
+                            mDesign = CaptureDesign.Creator.exposureTimeBracketAbsolute(mCamChars,expTimeRange,nExp);
+                            break;
+                        case BRACKET_EXPOSURE_TIME_RELATIVE:
+                            Range<Float> stopRange = new Range<Float>(lowBound,highBound);
+                            mDesign = CaptureDesign.Creator.exposureTimeBracketAroundAuto(stopRange,nExp);
+                            break;
+                        case BRACKET_ISO_ABSOLUTE:
+                            Range<Integer> isoRange = new Range<Integer>((int)lowBound,(int)highBound);
+                            mDesign = CaptureDesign.Creator.isoBracketAbsolute(mCamChars,isoRange,nExp);
+                            break;
+                        case BRACKET_ISO_RELATIVE:
+                            stopRange = new Range<Float>(lowBound,highBound);
+                            mDesign = CaptureDesign.Creator.isoBracketAroundAuto(stopRange,nExp);
+                            break;
+                        default:
+                            // do nothing
+                    }
+                    updateDesignViews();
+                }
+
+                break;
 
             // Returned from button push for selecting new output image format
             case (OUTPUT_FORMAT) :
@@ -797,26 +816,15 @@ public class appFragment extends Fragment {
                 }
                 break;
 
-            // Returned from button push for generating CaptureDesign based on
-            // current auto-exposure results.
-            case (SPLIT_AMOUNTS) :
-                if (resultCode==Activity.RESULT_OK){
-                    int splitAmount = mSplitAmounts[data.getIntExtra(SelectByLabelActivity.TAG_SELECTED_INDEX, 0)];
-                    CaptureDesign newDesign = CaptureDesign.splitTime(mAutoResult, splitAmount);
-                    newDesign.setExposureSetting(mDesign.getExposureSetting());
-                    newDesign.setFocusSetting(mDesign.getFocusSetting());
-                    newDesign.setProcessingSetting(mDesign.getProcessingSetting());
-                    mDesign = newDesign;
-                    updateDesignViews();
-                }
-                break;
-
             // Returned from button push for selecting new focus approach
             case (FOCUS_SETTING) :
                 if (resultCode == Activity.RESULT_OK) {
                     // Record choice in the CaptureDesign for when necessary
                     mDesign.setFocusSetting(data.getIntExtra(SelectByLabelActivity.TAG_SELECTED_INDEX,0));
                     mFocusButton.setText(CaptureDesign.FOCUS_CHOICES[mDesign.getFocusSetting()]);
+
+                    // Change color-based information of Exposure list accordingly
+                    updateDesignViews();
                 }
                 break;
 
@@ -826,6 +834,9 @@ public class appFragment extends Fragment {
                     // Record choice in the CaptureDesign for when necessary
                     mDesign.setExposureSetting(data.getIntExtra(SelectByLabelActivity.TAG_SELECTED_INDEX,0));
                     mExposureButton.setText(CaptureDesign.EXPOSURE_CHOICES[mDesign.getExposureSetting()]);
+
+                    // Change color-based information of Exposure list accordingly
+                    updateDesignViews();
                 }
                 break;
 
@@ -838,6 +849,7 @@ public class appFragment extends Fragment {
                     // If High Quality processing requested, stall times not
                     // well defined, so indicate this visually.
                     updateConstraintViews();
+
                 }
                 break;
 
@@ -849,7 +861,7 @@ public class appFragment extends Fragment {
                     // Create a new captureDesign based on JSON file selected. I KNOW this is terrible
                     // misuse of incorrect checked exceptions. Will return to this when possible.
                     try {
-                        CaptureDesign newDesign = CaptureDesign.loadDesignFromJson(file);
+                        CaptureDesign newDesign = CaptureDesign.Creator.loadDesignFromJson(file);
                         newDesign.setExposureSetting(mDesign.getExposureSetting());
                         newDesign.setFocusSetting(mDesign.getFocusSetting());
                         newDesign.setProcessingSetting(mDesign.getProcessingSetting());
@@ -934,7 +946,6 @@ public class appFragment extends Fragment {
             cae.printStackTrace();
             getActivity().finish();
         }
-
     }
 
 
@@ -1023,15 +1034,11 @@ public class appFragment extends Fragment {
     private void updateSession(){
         Log.v(APP_TAG,"updateSession() called.");
 
-        // Establish output surface (ImageReader) resources and register our
-        // callback with it.
-        // Sloppy, but 10 as an upper bound should enough head room for Images to be read out before
-        // the new ones come in. The +2 is for safety time to dispose of images that came in from
-        // the capture auto-convergence process.
+        // Establish output surface (ImageReader) resources and register our callback with it.
         mImageReader = ImageReader.newInstance(
                 mOutputSizes[mOutputSizeInd].getWidth(), mOutputSizes[mOutputSizeInd].getHeight(),
                 mOutputFormats.get(mOutputFormatInd),
-                Math.min(10,mDesign.getExposures().size())+2);
+                imageBufferSizer());  // defer to auxiliary function to determine size of allocation
         mImageReader.setOnImageAvailableListener(mOnImageAvailableListener, mBackgroundHandler);
 
         try{
@@ -1047,6 +1054,26 @@ public class appFragment extends Fragment {
             getActivity().finish();
         }
     }
+
+
+
+    /* int imageBufferSizer()
+     *
+     * Function to determine the number of Images we should allocate space for in the ImageReader.
+     * Right now this is a very simple function, but this method is a placeholder for more
+     * complicated methods in the future, based on:
+     * - the image format
+     * - the device's read-out-to-disk speed
+     * - available RAM of the device, max number an ImageReader can allocate for (poorly documented)
+     *
+     * Right now the function is fairly sloppy, though it seems that a Nexus 5 can actually use 30
+     * and work successfully. Much larger numbers don't throw an error, but do crash the application
+     * later on.
+     */
+    int imageBufferSizer(){
+        return Math.min(30,mDesign.getExposures().size())+2;
+    }
+
 
 
     /* void closeCamera()
@@ -1196,10 +1223,12 @@ public class appFragment extends Fragment {
      */
     public void updateDesignViews(){
         Log.v(APP_TAG,"updateDesignViews() called.");
-        mCaptureDesignAdapter.clear();
-        mCaptureDesignAdapter.addAll(mDesign.getExposures());
-        mCaptureDesignListView.setAdapter(mCaptureDesignAdapter);
-        mDesignNameEditText.setText(mDesign.getDesignName());
+        mCaptureDesignAdapter.registerNewCaptureDesign(mDesign);
+        mCaptureDesignAdapter.notifyDataSetChanged();
+//        mCaptureDesignAdapter.clear();
+//        mCaptureDesignAdapter.addAll(mDesign.getExposures());
+//        mCaptureDesignListView.setAdapter(mCaptureDesignAdapter);
+//        mDesignNameEditText.setText(mDesign.getDesignName());
     }
 
 
@@ -1234,136 +1263,6 @@ public class appFragment extends Fragment {
         mExposureButton.setClickable(onoff);
         mProcessingButton.setClickable(onoff);
         mSplitAmountButton.setClickable(onoff);
-    }
-
-    /* void generateExampleDesigns()
-     *
-     * If this the first time the app was started, as indicated by the absence of the main app
-     * directory upon opening, create a few example CaptureDesign JSONs, one for each:
-     * rack focus, rack exposure, rack sensitivity.
-     *
-     * This function requires that the camera device has already been loaded, for mCamChars.
-     */
-    private void generateExampleDesigns(){
-
-    // Create exposure time sweep
-        try{
-            FileOutputStream fostream = new FileOutputStream(new File(DESIGN_DIR,"sweep_exposure_time.json"));
-            try{
-                int sweepLength = 10;
-                Range<Long> ISOrange = mCamChars.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE);
-                double low = Math.log(ISOrange.getLower());
-                double high = Math.log(ISOrange.getUpper());
-                JsonWriter writer = new JsonWriter(new OutputStreamWriter(fostream, "UTF-8"));
-                writer.setIndent("    ");
-                writer.beginArray();
-                for (int i=0; i<sweepLength; i++){
-
-                    writer.beginObject();
-                    writer.name("exposureTime");
-                    writer.value((long) Math.exp(low + (high-low)*i/sweepLength)); //varying
-                    writer.name("aperture");
-                    writer.value(mCamChars.get(CameraCharacteristics.LENS_INFO_AVAILABLE_APERTURES)[0]); // first available
-                    writer.name("sensitivity");
-                    writer.value(400); // in ISO
-                    writer.name("focalLength");
-                    writer.value(mCamChars.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)[0]); //first available
-                    writer.name("focusDistance");
-                    writer.value(mCamChars.get(CameraCharacteristics.LENS_INFO_HYPERFOCAL_DISTANCE)); // set for hyperfocal distance for ease
-                    writer.endObject();
-                }
-                writer.endArray();
-                writer.close();
-            } catch (FileNotFoundException fnfe) {
-                fnfe.printStackTrace();
-            } finally {
-                if (null!=fostream){
-                    fostream.close();
-                }
-            }
-        }
-        catch (IOException ioe){
-            ioe.printStackTrace();
-        }
-
-        // Create ISO sweep
-        try{
-            FileOutputStream fostream = new FileOutputStream(new File(DESIGN_DIR,"sweep_ISO.json"));
-            try{
-                int sweepLength = 10;
-                Range<Integer> ISOrange = mCamChars.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE);
-                double low = Math.log(ISOrange.getLower());
-                double high = Math.log(ISOrange.getUpper());
-                JsonWriter writer = new JsonWriter(new OutputStreamWriter(fostream, "UTF-8"));
-                writer.setIndent("    ");
-                writer.beginArray();
-                for (int i=0; i<sweepLength; i++){
-
-                    writer.beginObject();
-                    writer.name("exposureTime");
-                    writer.value(16000000); // 16ms
-                    writer.name("aperture");
-                    writer.value(mCamChars.get(CameraCharacteristics.LENS_INFO_AVAILABLE_APERTURES)[0]); // first available
-                    writer.name("sensitivity");
-                    writer.value((int) Math.exp(low + (high-low)*i/sweepLength)); // in ISO
-                    writer.name("focalLength");
-                    writer.value(mCamChars.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)[0]); //first available
-                    writer.name("focusDistance");
-                    writer.value(mCamChars.get(CameraCharacteristics.LENS_INFO_HYPERFOCAL_DISTANCE)); // set for hyperfocal distance for ease
-                    writer.endObject();
-                }
-                writer.endArray();
-                writer.close();
-            } catch (FileNotFoundException fnfe) {
-                fnfe.printStackTrace();
-            } finally {
-                if (null!=fostream){
-                    fostream.close();
-                }
-            }
-        }
-        catch (IOException ioe){
-            ioe.printStackTrace();
-        }
-
-        // Create Focus Sweep
-        try{
-            FileOutputStream fostream = new FileOutputStream(new File(DESIGN_DIR,"sweep_focus.json"));
-            try{
-                int sweepLength = 10;
-                Float minFocus = mCamChars.get(CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE);
-
-                JsonWriter writer = new JsonWriter(new OutputStreamWriter(fostream, "UTF-8"));
-                writer.setIndent("    ");
-                writer.beginArray();
-                for (int i=0; i<sweepLength; i++){
-
-                    writer.beginObject();
-                    writer.name("exposureTime");
-                    writer.value(16000000); // 16ms
-                    writer.name("aperture");
-                    writer.value(mCamChars.get(CameraCharacteristics.LENS_INFO_AVAILABLE_APERTURES)[0]); // first available
-                    writer.name("sensitivity");
-                    writer.value(400); // in ISO
-                    writer.name("focalLength");
-                    writer.value(mCamChars.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS)[0]); //first available
-                    writer.name("focusDistance");
-                    writer.value(minFocus*i/sweepLength); // This is being varied. units: diopters
-                    writer.endObject();
-                }
-                writer.endArray();
-                writer.close();
-            } catch (FileNotFoundException fnfe) {
-                fnfe.printStackTrace();
-            } finally {
-                if (null!=fostream){
-                    fostream.close();
-                }
-            }
-        }
-        catch (IOException ioe){
-            ioe.printStackTrace();
-        }
     }
 
 

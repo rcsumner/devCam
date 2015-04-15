@@ -14,6 +14,7 @@ import android.os.Handler;
 import android.util.JsonReader;
 import android.util.JsonToken;
 import android.util.Log;
+import android.util.Range;
 import android.view.Surface;
 
 import java.io.File;
@@ -43,8 +44,8 @@ public class CaptureDesign {
 
     // Label string arrays relating to the CaptureDesign possibilities for
     // these three capture options.
-    final static String[] FOCUS_CHOICES = {"MANUAL", "AUTO ONCE, LOCK", "AUTO ALL"};
-    final static String[] EXPOSURE_CHOICES = {"MANUAL", "AUTO ONCE, LOCK", "AUTO ALL"};
+    final static String[] FOCUS_CHOICES = {"MANUAL", "AUTO ONCE, LOCK", "AUTO BEFORE ALL"};
+    final static String[] EXPOSURE_CHOICES = {"MANUAL", "AUTO ONCE, LOCK", "AUTO BEFORE ALL"};
     static final Integer MANUAL = 0;
     static final Integer AUTO_FIRST = 1;
     static final Integer AUTO_ALL = 2;
@@ -531,28 +532,6 @@ public class CaptureDesign {
 
 
 
-
-    /* static CaptureDesign splitTime(CaptureResult, int n)
-     *
-     * Static utility function for generating a CaptureDesign by taking the values present in a
-     * CaptureResult and repeating them in n many Exposures, except for exposure time, each of which
-     * is 1/n the CaptureResult's.
-     */
-    static public CaptureDesign splitTime(CaptureResult autoResult, int nExp){
-        CaptureDesign output = new CaptureDesign();
-        // Assign the Exposure input 1/nExp its regular exposure time
-        // then use that in the construct of nExp Exposures in the list.
-        for (int i = 0; i < nExp; i++){
-            Exposure temp = new Exposure(autoResult);
-            temp.setExposureTime(temp.getExposureTime()/nExp);
-            output.addExposure(temp);
-        }
-        return output;
-    }
-
-
-
-
     /* We use a callback which the main Activity instantiates and then registers with the
      * CaptureDesign. This is used to let the main activity know when each new image is ready so
      * it can be saved, and also to know when the entire design sequence has been captured so it can
@@ -565,169 +544,6 @@ public class CaptureDesign {
 
     void registerCallback(DesignCaptureCallback callback){
         mRegisteredCallback = callback;
-    }
-
-
-
-
-
-    /* static CaptureDesign loadDesignFromJson(File)
-     *
-     * Static method to read a JSON pointed to be the input File into a CaptureDesign. The
-     * CaptureDesign will have the default Intent values, as well as a list of Exposures which is
-     * derived from the array-of-objects describing Exposure parameters in the JSON.
-     *
-     * If an object in the JSON array does not contain one of the necessary fields, an exception is
-     * thrown.
-     *
-     * If a variable parameter string does not follow the form "x*AUTO", a different exception is
-     * thrown.
-     *
-     * Currently, no other check on the content is performed, such as making sure the exposureTime
-     * can be read as a Long.
-     *
-     * I know the capricious use of these specific checked exceptions is probably infuriating, but
-     * it works for now.
-     */
-    static CaptureDesign loadDesignFromJson(File file) throws NoSuchFieldException, IOException, NoSuchMethodException{
-        CaptureDesign out = new CaptureDesign();
-        try {
-            FileInputStream fistream = new FileInputStream(file);
-
-            // Read the JSON file
-            JsonReader reader = new JsonReader(new InputStreamReader(fistream));
-            try {
-                reader.beginArray();
-
-                // While there's another object in this array of JSON Exposures
-                while (reader.hasNext()) {
-                    Exposure tempExposure = new Exposure();
-                    reader.beginObject();
-
-                    // These flags make sure all necessary fields for an Exposure were obtained
-                    boolean hadExposureTime = false;
-                    boolean hadAperture = false;
-                    boolean hadSensitivity = false;
-                    boolean hadFocalLength = false;
-                    boolean hadFocusDistance = false;
-
-                    // While there's another field in this JSON Exposure
-                    while(reader.hasNext()){
-                        /* Check to see if the field is any of the five necessary, expected ones.
-                         * For each field in the object that indicates one of the parameters, parse
-                         * whether the parameter contained is a number, indicating a literal
-                         * parameter value, or a string, indicating a variable parameter value.
-                         * If it is a string, make sure it fits the required format, as a fairly
-                         * loose check.
-                         */
-
-                        String nextName = reader.nextName().toLowerCase(); //Deal with capitalization here
-                        if (nextName.equals("exposuretime")){
-                            JsonToken value = reader.peek();
-                            if (value==JsonToken.NUMBER){
-                                tempExposure.setExposureTime(reader.nextLong());
-                                hadExposureTime = true;
-                            } else if (value==JsonToken.STRING){
-                                String next = reader.nextString();
-                                if (next.matches("[0-9.]*\\*[a-zA-Z]*")) {
-                                    tempExposure.recordExposureTimeVar(next);
-                                    hadExposureTime = true;
-                                } else {
-                                    throw new NoSuchMethodException();
-                                }
-                            }
-
-
-                        } else if (nextName.equals("aperture")){
-                            JsonToken value = reader.peek();
-                            if (value==JsonToken.NUMBER){
-                                tempExposure.setAperture(Double.valueOf(reader.nextDouble()).floatValue());
-                                hadAperture = true;
-                            } else if (value==JsonToken.STRING){
-                                String next = reader.nextString();
-                                if (next.matches("[0-9.]*\\*[a-zA-Z]*")) {
-                                    tempExposure.recordApertureVar(next);
-                                    hadAperture = true;
-                                } else {
-                                    throw new NoSuchMethodException();
-                                }
-                            }
-
-                        } else if (nextName.equals("sensitivity")){
-                            JsonToken value = reader.peek();
-                            if (value==JsonToken.NUMBER){
-                                tempExposure.setSensitivity(reader.nextInt());
-                                hadSensitivity = true;
-                            } else if (value==JsonToken.STRING){
-                                String next = reader.nextString();
-                                if (next.matches("[0-9.]*\\*[a-zA-Z]*")) {
-                                    tempExposure.recordSensitivityVar(next);
-                                    hadSensitivity = true;
-                                } else {
-                                    throw new NoSuchMethodException();
-                                }
-                            }
-
-                        } else if (nextName.equals("focallength")){
-                            JsonToken value = reader.peek();
-                            if (value==JsonToken.NUMBER){
-                                tempExposure.setFocalLength(Double.valueOf(reader.nextDouble()).floatValue());
-                                hadFocalLength = true;
-                            } else if (value==JsonToken.STRING){
-                                String next = reader.nextString();
-                                if (next.matches("[0-9.]*\\*[a-zA-Z]*")) {
-                                    tempExposure.recordFocalLengthVar(next);
-                                    hadFocalLength = true;
-                                } else {
-                                    throw new NoSuchMethodException();
-                                }
-                            }
-
-                        } else if (nextName.equals("focusdistance")){
-                            JsonToken value = reader.peek();
-                            if (value==JsonToken.NUMBER){
-                                Double temp = reader.nextDouble();
-                                tempExposure.setFocusDistance(Double.valueOf(temp).floatValue());
-                                hadFocusDistance = true;
-                            } else if (value==JsonToken.STRING){
-                                String next = reader.nextString();
-                                if (next.matches("[0-9.]*\\*[a-zA-Z]*")) {
-                                    tempExposure.recordFocusDistanceVar(next);
-                                    hadFocusDistance = true;
-                                } else {
-                                    throw new NoSuchMethodException();
-                                }
-                            }
-
-                        } else {
-                            reader.skipValue();
-                        }
-                    }
-                    reader.endObject();
-
-                    // If this JSON had a malformed object without the necessary field:
-                    if (!hadExposureTime
-                            || !hadAperture
-                            || !hadSensitivity
-                            || !hadFocusDistance
-                            || !hadFocalLength){
-                        throw new NoSuchFieldException();
-                    }
-
-                    // Add the properly-read Exposure to the list.
-                    out.addExposure(tempExposure);
-                }
-
-                reader.endArray();
-                reader.close();
-            } catch (IOException ioe) {
-                Log.e(appFragment.APP_TAG,"IOException reading Design JSON file.");
-                throw ioe;
-            }
-        } catch (FileNotFoundException fnfe){
-            Log.e(appFragment.APP_TAG,"Design JSON file not found.");
-        }
-        return out;
     }
 
 
@@ -799,4 +615,349 @@ public class CaptureDesign {
     }
 
 
-}
+
+
+
+    /* CaptureDesign.Creator inner class. Used for generating patterned Capture Designs from a rule
+     * and an existing CaptureResult and/or CameraCharacteristic.
+     *
+     * All members are static methods just useful for creating CaptureDesigns.
+     */
+    static abstract class Creator{
+
+     /* static CaptureDesign loadDesignFromJson(File)
+     *
+     * Static method to read a JSON pointed to be the input File into a CaptureDesign. The
+     * CaptureDesign will have the default Intent values, as well as a list of Exposures which is
+     * derived from the array-of-objects describing Exposure parameters in the JSON.
+     *
+     * If an object in the JSON array does not contain one of the necessary fields, an exception is
+     * thrown.
+     *
+     * If a variable parameter string does not follow the form "x*AUTO", a different exception is
+     * thrown.
+     *
+     * Currently, no other check on the content is performed, such as making sure the exposureTime
+     * can be read as a Long.
+     *
+     * I know the capricious use of these specific checked exceptions is probably infuriating, but
+     * it works for now.
+     */
+        static CaptureDesign loadDesignFromJson(File file) throws NoSuchFieldException, IOException, NoSuchMethodException{
+            CaptureDesign out = new CaptureDesign();
+            try {
+                FileInputStream fistream = new FileInputStream(file);
+
+                // Read the JSON file
+                JsonReader reader = new JsonReader(new InputStreamReader(fistream));
+                try {
+                    reader.beginArray();
+
+                    // While there's another object in this array of JSON Exposures
+                    while (reader.hasNext()) {
+                        Exposure tempExposure = new Exposure();
+                        reader.beginObject();
+
+                        // These flags make sure all necessary fields for an Exposure were obtained
+                        boolean hadExposureTime = false;
+                        boolean hadAperture = false;
+                        boolean hadSensitivity = false;
+                        boolean hadFocalLength = false;
+                        boolean hadFocusDistance = false;
+
+                        // While there's another field in this JSON Exposure
+                        while(reader.hasNext()){
+                        /* Check to see if the field is any of the five necessary, expected ones.
+                         * For each field in the object that indicates one of the parameters, parse
+                         * whether the parameter contained is a number, indicating a literal
+                         * parameter value, or a string, indicating a variable parameter value.
+                         * If it is a string, make sure it fits the required format, as a fairly
+                         * loose check.
+                         */
+
+                            String nextName = reader.nextName().toLowerCase(); //Deal with capitalization here
+                            if (nextName.equals("exposuretime")){
+                                JsonToken value = reader.peek();
+                                if (value==JsonToken.NUMBER){
+                                    tempExposure.setExposureTime(reader.nextLong());
+                                    hadExposureTime = true;
+                                } else if (value==JsonToken.STRING){
+                                    String next = reader.nextString();
+                                    if (Exposure.ExposureParameterVariable.checkFeasibleInput(next)) {
+                                        tempExposure.recordExposureTimeVar(next);
+                                        hadExposureTime = true;
+                                    } else {
+                                        throw new NoSuchMethodException();
+                                    }
+                                }
+
+
+                            } else if (nextName.equals("aperture")){
+                                JsonToken value = reader.peek();
+                                if (value==JsonToken.NUMBER){
+                                    tempExposure.setAperture(Double.valueOf(reader.nextDouble()).floatValue());
+                                    hadAperture = true;
+                                } else if (value==JsonToken.STRING){
+                                    String next = reader.nextString();
+                                    if (Exposure.ExposureParameterVariable.checkFeasibleInput(next)) {
+                                        tempExposure.recordApertureVar(next);
+                                        hadAperture = true;
+                                    } else {
+                                        throw new NoSuchMethodException();
+                                    }
+                                }
+
+                            } else if (nextName.equals("sensitivity")){
+                                JsonToken value = reader.peek();
+                                if (value==JsonToken.NUMBER){
+                                    tempExposure.setSensitivity(reader.nextInt());
+                                    hadSensitivity = true;
+                                } else if (value==JsonToken.STRING){
+                                    String next = reader.nextString();
+                                    if (Exposure.ExposureParameterVariable.checkFeasibleInput(next)) {
+                                        tempExposure.recordSensitivityVar(next);
+                                        hadSensitivity = true;
+                                    } else {
+                                        throw new NoSuchMethodException();
+                                    }
+                                }
+
+                            } else if (nextName.equals("focallength")){
+                                JsonToken value = reader.peek();
+                                if (value==JsonToken.NUMBER){
+                                    tempExposure.setFocalLength(Double.valueOf(reader.nextDouble()).floatValue());
+                                    hadFocalLength = true;
+                                } else if (value==JsonToken.STRING){
+                                    String next = reader.nextString();
+                                    if (Exposure.ExposureParameterVariable.checkFeasibleInput(next)) {
+                                        tempExposure.recordFocalLengthVar(next);
+                                        hadFocalLength = true;
+                                    } else {
+                                        throw new NoSuchMethodException();
+                                    }
+                                }
+
+                            } else if (nextName.equals("focusdistance")){
+                                JsonToken value = reader.peek();
+                                if (value==JsonToken.NUMBER){
+                                    Double temp = reader.nextDouble();
+                                    tempExposure.setFocusDistance(Double.valueOf(temp).floatValue());
+                                    hadFocusDistance = true;
+                                } else if (value==JsonToken.STRING){
+                                    String next = reader.nextString();
+                                    if (Exposure.ExposureParameterVariable.checkFeasibleInput(next)) {
+                                        tempExposure.recordFocusDistanceVar(next);
+                                        hadFocusDistance = true;
+                                    } else {
+                                        throw new NoSuchMethodException();
+                                    }
+                                }
+
+                            } else {
+                                reader.skipValue();
+                            }
+                        }
+                        reader.endObject();
+
+                        // If this JSON had a malformed object without the necessary field:
+                        if (!hadExposureTime
+                                || !hadAperture
+                                || !hadSensitivity
+                                || !hadFocusDistance
+                                || !hadFocalLength){
+                            throw new NoSuchFieldException();
+                        }
+
+                        // Add the properly-read Exposure to the list.
+                        out.addExposure(tempExposure);
+                    }
+
+                    reader.endArray();
+                    reader.close();
+                } catch (IOException ioe) {
+                    Log.e(appFragment.APP_TAG,"IOException reading Design JSON file.");
+                    throw ioe;
+                }
+            } catch (FileNotFoundException fnfe){
+                Log.e(appFragment.APP_TAG,"Design JSON file not found.");
+            }
+            return out;
+        }
+
+
+
+        /* CaptureDesign exposureTimeBracketAroundAuto(Range<Float>, int)
+         *
+         * Creates a CaptureDesign that is bracketed around the Auto-Exposure result at capture time
+         * by varying the exposure time.
+         *
+         * It brackets around the auto exposure time from the lower number of stops indicated in the
+         * Range<Float> to the upper number. It splits this range into the integer number of
+         * exposures indicated. Bracketing is linear in stops (exponential in actual exposure time).
+         *
+         * Note that the stop values do not need to be based around 0.
+         * Also, the integer number is not odd, it will not include the actual Auto exposure time,
+         * though it does bracket around it.
+         */
+        static CaptureDesign exposureTimeBracketAroundAuto(Range<Float> stopRange, int nExp){
+            CaptureDesign output = new CaptureDesign();
+
+            Float logStep = (stopRange.getUpper() - stopRange.getLower())/(nExp-1);
+
+            for (int i=0; i<nExp; i++){
+                    Exposure temp = new Exposure(Exposure.ALL_AUTO);
+                    temp.recordExposureTimeVar(Math.pow(2,stopRange.getLower()+i*logStep)+"*AUTO");
+                    output.addExposure(temp);
+                }
+            return output;
+        }
+
+
+        /* CaptureDesign isoBracketAroundAuto(Range<Float>, int)
+         *
+         * Creates a CaptureDesign that is bracketed around the Auto-Exposure result at capture time
+         * by varying the ISO.
+         *
+         * It brackets around the auto ISO from the lower number of stops indicated in the
+         * Range<Float> to the upper number. It splits this range into the integer number of
+         * exposures indicated. Bracketing is linear in stops (exponential in ISO).
+         *
+         * Note that the stop values do not need to be based around 0.
+         * Also, the integer number is not odd, it will not include the actual Auto ISO,
+         * though it does bracket around it.
+         */
+        static CaptureDesign isoBracketAroundAuto(Range<Float> stopRange, int nExp){
+            CaptureDesign output = new CaptureDesign();
+
+            Float logStep = (stopRange.getUpper() - stopRange.getLower())/(nExp-1);
+
+            for (int i=0; i<nExp; i++){
+                Exposure temp = new Exposure(Exposure.ALL_AUTO);
+                temp.recordSensitivityVar(Math.pow(2,stopRange.getLower()+i*logStep)+"*AUTO");
+                output.addExposure(temp);
+            }
+            return output;
+        }
+
+
+      /* CaptureDesign exposureTimeBracketAbsolute(CameraCharacteristics, Range<Long>, int)
+      *
+      * Creates a CaptureDesign that is bracketed between two absolute ISO values,
+      * with the number of steps indicated by the int input.
+      *
+      * Bracketing is linear in stops, i.e. exponential in ISO.
+      *
+      */
+        static CaptureDesign exposureTimeBracketAbsolute(CameraCharacteristics camChars,
+                                                           Range<Long> timeRange,
+                                                           int nExp){
+            CaptureDesign output = new CaptureDesign();
+
+            // The linear interpolation step size for each Exposure
+            long tStep = (timeRange.getUpper()-timeRange.getLower())/(nExp-1);
+
+            for (int i=0; i<nExp; i++){
+                long expTime = timeRange.getLower() + tStep*i;
+                // Only add this bracketed exposure if it is within the bounds of the camera's means.
+                if (camChars.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE).contains(expTime)) {
+                    // Create an Exposure from the auto Result and only give it the new exposure time.
+                    Exposure temp = new Exposure("ALL_AUTO");
+                    temp.setExposureTime(expTime);
+                    output.addExposure(temp);
+                }
+            }
+            return output;
+        }
+
+
+     /* CaptureDesign isoBracketAbsolute(CameraCharacteristics, Range<Integer>, int)
+      *
+      * Creates a CaptureDesign that is bracketed between two absolute ISO values,
+      * with the number of steps indicated by the int input.
+      *
+      * Bracketing is linear in stops, i.e. exponential in ISO.
+      *
+      */
+        static CaptureDesign isoBracketAbsolute(CameraCharacteristics camChars,
+                                                         Range<Integer> isoRange,
+                                                         int nExp){
+            CaptureDesign output = new CaptureDesign();
+
+            // The linear interpolation step size for each Exposure
+            Integer tStep = (isoRange.getUpper()-isoRange.getLower())/(nExp-1);
+
+            for (int i=0; i<nExp; i++){
+                Integer iso = isoRange.getLower() + tStep*i;
+                // Only add this bracketed exposure if it is within the bounds of the camera's means.
+                if (camChars.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE).contains(iso)) {
+                    // Create an Exposure from the auto Result and only give it the new iso
+                    Exposure temp = new Exposure("ALL_AUTO");
+                    temp.setSensitivity(iso);
+                    output.addExposure(temp);
+                }
+            }
+            return output;
+        }
+
+
+
+      /* CaptureDesign focusBracketAbsolute(CameraCharacteristics, Range<Float>, int)
+      *
+      * Creates a CaptureDesign which racks between two focus distances. Note that this will use
+      * the values given, even if the device is not actually calibrated to have those values be
+      * meaningful in meters.
+      *
+      * Bracketing is linear in meters.
+      *
+      */
+        static CaptureDesign focusBracketAbsolute(CameraCharacteristics camChars,
+                                                Range<Float> focusRange,
+                                                int nExp){
+            CaptureDesign output = new CaptureDesign();
+
+            // The linear interpolation step size for each Exposure
+            Float focusStep = (focusRange.getUpper()-focusRange.getLower())/(nExp-1);
+
+            for (int i=0; i<nExp; i++){
+                float focuspt = focusRange.getLower() + focusStep*i;
+                float focusDiopters = 1/focuspt;
+                // Only add this exposure if it is within the bounds of the camera's means.
+                if (focusDiopters < camChars.get(CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE)) {
+                    // Create an Exposure from the auto Result and only give it the new focus pt
+                    Exposure temp = new Exposure("ALL_AUTO");
+                    temp.setFocusDistance(focusDiopters);
+                    output.addExposure(temp);
+                }
+            }
+            return output;
+        }
+
+
+
+     /* static CaptureDesign splitExposureTime(int n)
+      *
+      * Static utility function for generating a CaptureDesign by taking the values present in a
+      * CaptureResult and repeating them in n many Exposures, except for exposure time, each of which
+      * is 1/n the CaptureResult's. If the time of each is smaller than the device's capable time,
+      * each exposure will just be for the minimum amount.
+      */
+        static CaptureDesign splitExposureTime(int nExp){
+            CaptureDesign output = new CaptureDesign();
+
+            for (int i=0; i<nExp; i++){
+                Exposure temp = new Exposure(Exposure.ALL_AUTO);
+                temp.recordExposureTimeVar((1.0/nExp)+"*AUTO");
+                output.addExposure(temp);
+            }
+            return output;
+        }
+
+
+
+
+
+
+
+    } // end Creator inner class
+
+} // end whole CaptureDesign class

@@ -4,4 +4,7 @@
     <string name="inadequate_camera_text">Sorry, your device does not allow the low-level camera
         control necessary for devCam. A JSON file with your camera\'s reported capabilities has
     been saved at location Pictures/devCam/, though.</string>
+    <string name="generateDesignText">Generate From Template</string>
+    <string name="loadDesignText">Load From File</string>
+    <string name="autoWarningText">Auto</string>
 </resources>
