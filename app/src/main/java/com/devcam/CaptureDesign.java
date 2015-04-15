@@ -1,3 +1,10 @@
+/* CaptureDesign class.
+ * This contains all information about a how to capture a sequence of Exposures, including the
+ * Exposures themselves, and contains the methods which actually control the camera device to
+ * capture them.
+ * The outputs are saved to a CaptureResult associated with the CaptureDesign.
+ */
+
 package com.devcam;
 
 import android.hardware.camera2.CameraAccessException;
@@ -162,19 +169,17 @@ public class CaptureDesign {
     /* void captureSequenceBurst()
      *
      * Method for taking the list of target Exposures, turning them into CaptureRequests, and then
-     * capturing them as a burst. The easiest way to capture all of the frames in the sequence, and
-     * is used when focus and exposure Intents are set to MANUAL, or once the desired auto intents
-     * are only AUTO ONCE, LOCK and they have already converged.
+     * capturing them as a burst. Once this is called, the camera is completely manually controlled
+     * and the Exposures better have explicit values for all parameters.
      */
     private void captureSequenceBurst(){
         Log.v(appFragment.APP_TAG,"- - - - - Capturing Exposure Sequence as a Burst.");
         List<CaptureRequest> burstRequests= new ArrayList<CaptureRequest>();
 
-        // IF AE/EF was used once before capturing the burst, ensure that they are locked and will
-        // not start a new search on any frame in the burst.
-        mCaptureCRB.set(CaptureRequest.CONTROL_AE_LOCK,true);
-        mCaptureCRB.set(CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER, CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER_IDLE);
-        mCaptureCRB.set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_IDLE);
+        // Though some of them may have been originally derived from the scene, all parameter values
+        // are now explicitly set. So make sure control modes are both OFF (leave AWB on)
+        mCaptureCRB.set(CaptureRequest.CONTROL_AF_MODE,CaptureRequest.CONTROL_AF_MODE_OFF);
+        mCaptureCRB.set(CaptureRequest.CONTROL_AE_MODE,CaptureRequest.CONTROL_AE_MODE_OFF);
 
         Iterator<Exposure> localExposureIt = mExposures.iterator();
         while (localExposureIt.hasNext()){
@@ -221,19 +226,13 @@ public class CaptureDesign {
      *
      * Begins the capture process of the entire CaptureDesign.
      * The first four arguments are necessary for this class to control the camera device and
-     * properly place the outputs. The latter two are necessary only for generating explicit
-     * Exposure parameter values if the Exposures in the list have variable parameter values.
+     * properly place the outputs. The lastis necessary only for generating explicit Exposure
+     * parameter values if the Exposures in the list have variable parameter values.
      *
-     * The process determines its behavior based on the requested A3 processes:
-     *
-     * - If no AF or AE is requested, we can just do a straight burst capture right away.
-     * - If AE and/or AF are requested only FIRST, then all we have to do is let the converge with a
-     * series of requests that checks the output CaptureResults to see if they are converged. Then,
-     * once converged, we can do a standard burst capture.
-     * - If either the AE or AF requires convergence before every exposure, we enter a process where
-     * a capture Request requesting these states is submitted and then its Result is checked for
-     * convergence. If achieved, it captures a single Exposure from the list and then, upon success
-     * of that capture, posts a new awaiting-convergence capture request.
+     * If the values of all parameters are already explicitly set, a burst is simply captured.
+     * If any of the Exposures have variables based around "Auto" then this takes a series of
+     * pictures until the camera AF/AE state(s) converge(s). Then it uses this auto-process
+     * CaptureResult to set explicit values in the Exposures, and then captures those as a burst.
      *
      * Rather than using a repeating capture request for these convergence tasks, we use individual
      * capture commands which recur "manually" if the state isn't converged yet. This gives us more
@@ -315,11 +314,7 @@ public class CaptureDesign {
             }
 
 
-            // Otherwise, we want the auto-process capture sequence to start. Note we need the
-            // CaptureRequests that are used here to have the same MODES as the target frame
-            // CaptureRequests, otherwise their states will reset, causing trouble.
-
-
+            // Otherwise, we want the auto-process capture sequence to start.
             // Now set the auto controls as desired, and the states accordingly. Note that we use
             // a state machine that goes from determining focus to determining exposure, so we
             // only change the state to WAITING_FOR_AE if the we are not waiting for AF first
@@ -414,18 +409,14 @@ public class CaptureDesign {
         /* void finishWithAuto(CaptureResult)
          *
          * This gets called by the callback when the desired auto-processes have converged. Now that
-         * the state has been met, we can lock the values from it and capture either the entire
-         * burst (if this is the first time called and we only wanted AUTO ONCE, LOCK intent for
-         * both processes) or the next target frame in the Exposure sequence.
+         * the state has been met, we can lock the values from it and capture the entire burst.
          */
         private void finishWithAuto(CaptureResult result){
             Log.v(appFragment.APP_TAG,"- - - Finished with the pre-capture Auto sequence.");
 
-            // If either Auto process was being used for only the first frame, let us now just
-            // post a burst capture since the state is converged.
+            // Now fill in the variable parameter values based on what we found, and capture.
             fillAutoValues(mCamChars,result);
             captureSequenceBurst();
-
         }
     };
 
@@ -517,6 +508,7 @@ public class CaptureDesign {
             writer.write("Capture time: "
                     + DateFormat.getDateTimeInstance().format(new Date(System.currentTimeMillis())) + "\n");
             writer.write("Processing setting: " + mProcessingSetting + "\n");
+            writer.write("\nExposure Time | ISO | Focus Distance | Aperture | Focal Length\n");
             for (int i=0; i<mExposures.size(); i++){
                 writer.write(mExposures.get(i).toString() + "\n");
             }

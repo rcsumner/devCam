@@ -146,11 +146,11 @@ public class Exposure {
     public String toString(){
         // Display the variable values if they exist. Otherwise, display the literals that should exist.
         String stringform =
-                ((mApertureVar!=null)? mApertureVar + ", " : "f" + mAperture + ", ") +
                 ((mExposureTimeVar!=null)? mExposureTimeVar + ", " : CameraReport.nsToString(mExposureTime) + ", ") +
                 ((mSensitivityVar!=null)? mSensitivityVar + ", " : "ISO " + mSensitivity + ", ") +
-                ((mFocalLengthVar!=null)? mFocalLengthVar + ", " : mFocalLength + "mm, focus: ") +
-                ((mFocusDistanceVar!=null)? mFocusDistanceVar : CameraReport.diopterToMeters(mFocusDistance));
+                ((mFocusDistanceVar!=null)? mFocusDistanceVar + ", " : CameraReport.diopterToMeters(mFocusDistance)+ ", ") +
+                ((mApertureVar!=null)? mApertureVar + ", " : "f" + mAperture + ", ") +
+                ((mFocalLengthVar!=null)? mFocalLengthVar + ", " : mFocalLength + "mm");
 
         return stringform;
     }

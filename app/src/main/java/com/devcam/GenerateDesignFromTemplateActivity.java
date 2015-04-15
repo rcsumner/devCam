@@ -205,7 +205,12 @@ public class GenerateDesignFromTemplateActivity extends Activity {
                             if (minFoc>0) {
                                 String bounds = "Device bounds:\n[" +
                                         CameraReport.diopterToMeters(mCamChars.get(CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE))
-                                        +" "+ DecimalFormatSymbols.getInstance().getInfinity() + "]";
+                                        +", "+ DecimalFormatSymbols.getInstance().getInfinity() + "]";
+                                // If these values are not actually meaningful, alert the user w/an asterisk
+                                if (mCamChars.get(CameraCharacteristics.LENS_INFO_FOCUS_DISTANCE_CALIBRATION)
+                                        == CameraCharacteristics.LENS_INFO_FOCUS_DISTANCE_CALIBRATION_UNCALIBRATED) {
+                                    bounds = bounds.concat("*");
+                                }
                                 mDeviceBoundTextView.setText(bounds);
                             }
                         }
