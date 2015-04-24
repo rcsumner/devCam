@@ -1,0 +1,168 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:id="@+id/scrollView" >
+
+
+    <LinearLayout
+        android:orientation="vertical"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_horizontal">
+
+        <LinearLayout
+            android:orientation="horizontal"
+            android:layout_width="600px"
+            android:layout_height="wrap_content"
+            android:gravity="center|center_horizontal|right"
+            android:layout_weight="1">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textAppearance="?android:attr/textAppearanceSmall"
+                android:text="5 second delay"
+                android:id="@+id/textView2"
+                android:textStyle="bold"
+                android:layout_marginRight="10dp"
+                android:layout_marginLeft="0dp"
+                android:layout_gravity="center_vertical|left" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textAppearance="?android:attr/textAppearanceSmall"
+                android:text="Off"
+                android:id="@+id/textView3" />
+
+            <Switch
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textOff="Off"
+                android:textOn="On"
+                android:id="@+id/delaySwitch"
+                android:switchMinWidth="50dp"
+                android:layout_marginLeft="10px"
+                android:layout_marginRight="10px"
+                android:showText="false" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textAppearance="?android:attr/textAppearanceSmall"
+                android:text="On"
+                android:id="@+id/textView" />
+
+        </LinearLayout>
+
+        <LinearLayout
+            android:orientation="horizontal"
+            android:layout_width="600px"
+            android:layout_height="wrap_content"
+            android:gravity="right">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Show Exposure Time"
+                android:textStyle="bold"
+                android:id="@+id/textView4"
+                android:layout_gravity="center_vertical|left" />
+
+            <CheckBox
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:id="@+id/exposureTimeCheckBox"
+                android:layout_gravity="center_vertical|right"
+                android:gravity="right" />
+
+        </LinearLayout>
+
+        <LinearLayout
+            android:orientation="horizontal"
+            android:layout_width="600px"
+            android:layout_height="wrap_content"
+            android:gravity="right">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Show Sensitivity/ISO"
+                android:textStyle="bold"
+                android:id="@+id/textView5" />
+
+            <CheckBox
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:id="@+id/sensitivityCheckBox" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:orientation="horizontal"
+            android:layout_width="600px"
+            android:layout_height="wrap_content"
+            android:gravity="right">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Show Aperture"
+                android:textStyle="bold"
+                android:id="@+id/textView6" />
+
+            <CheckBox
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:id="@+id/apertureCheckBox" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:orientation="horizontal"
+            android:layout_width="600px"
+            android:layout_height="wrap_content"
+            android:gravity="right">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Show Focus Distance"
+                android:textStyle="bold"
+                android:id="@+id/textView7" />
+
+            <CheckBox
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:id="@+id/focusDistanceCheckBox" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:orientation="horizontal"
+            android:layout_width="600px"
+            android:layout_height="wrap_content"
+            android:gravity="right">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Show Focal Length"
+                android:textStyle="bold"
+                android:id="@+id/textView8" />
+
+            <CheckBox
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:id="@+id/focalLengthCheckBox" />
+        </LinearLayout>
+
+        <Button
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="OK"
+            android:id="@+id/okSettingsButton" />
+
+
+    </LinearLayout>
+
+
+</ScrollView>

@@ -3,7 +3,7 @@
     <color name="trans_white">#6FFF</color>
     <color name="white">#FFFF</color>
     <color name="trans_black">#8000</color>
-    <color name="design_background">#600F</color>
+    <color name="design_background">#FBBB</color>
     <color name="exposure_list_background">#6FF0</color>
     <color name="take_red">#Af00</color>
 </resources>

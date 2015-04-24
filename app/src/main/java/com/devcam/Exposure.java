@@ -81,11 +81,11 @@ public class Exposure {
         this();
         if (flag.equals(Exposure.ALL_AUTO)) {
             mHasVariables = true;
-            mExposureTimeVar = new ExposureParameterVariable("1*AUTO");
-            mSensitivityVar = new ExposureParameterVariable("1*AUTO");
-            mApertureVar = new ExposureParameterVariable("1*AUTO");
-            mFocalLengthVar = new ExposureParameterVariable("1*AUTO");
-            mFocusDistanceVar = new ExposureParameterVariable("1*AUTO");
+            mExposureTimeVar = new ExposureParameterVariable("AUTO");
+            mSensitivityVar = new ExposureParameterVariable("AUTO");
+            mApertureVar = new ExposureParameterVariable("AUTO");
+            mFocalLengthVar = new ExposureParameterVariable("AUTO");
+            mFocusDistanceVar = new ExposureParameterVariable("AUTO");
         }
     }
     // - - - - -  end constructors - - - - -

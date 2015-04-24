@@ -8,6 +8,7 @@ import android.app.Activity;
 import android.app.Fragment;
 import android.content.Context;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.graphics.ImageFormat;
 import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCaptureSession;
@@ -40,11 +41,9 @@ import android.view.View.OnClickListener;
 import android.view.ViewGroup;
 import android.view.inputmethod.EditorInfo;
 import android.widget.Button;
-import android.widget.CompoundButton;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ListView;
-import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -69,6 +68,8 @@ public class appFragment extends Fragment {
     public final static int LOAD_DESIGN = 6;
     public final static int GENERATE_DESIGN = 7;
 
+
+
     // ID tag for inter-thread communication of A3 results from preview results
     public final static int AUTO_RESULTS = 100;
 
@@ -85,10 +86,10 @@ public class appFragment extends Fragment {
     // - - - - Class Member Variables - - - -
 
     // GUI-related member variables
-    private Switch mDelaySwitch;
     private Button mLoadDesignButton;
     private Button mCaptureButton;
     private Button mOutputFormatButton;
+    private Button mSettingsButton;
     private Button mOutputSizeButton;
     private Button mProcessingButton;
     private Button mSplitAmountButton;
@@ -144,6 +145,9 @@ public class appFragment extends Fragment {
 
     boolean mUseDelay = false; // flag reflecting state of the delay switch
     boolean mInadequateCameraFlag = false; // flag for camera device that can't handle this app
+
+    // This simply holds the user options for displaying parameters. They are loaded in onResume().
+    ExposureArrayAdapter.DisplayOptionBundle mDisplayOptions = new ExposureArrayAdapter.DisplayOptionBundle();
 
     // The CaptureDesign the app is working with at the moment
     private CaptureDesign mDesign = new CaptureDesign();
@@ -480,6 +484,7 @@ public class appFragment extends Fragment {
     // - - - - - - Begin Overridden/Lifecycle Activity Methods - - - - - - - -
 
 
+
     @Override
     public View onCreateView(LayoutInflater inflater, ViewGroup parent, Bundle savedInstanceState) {
         // Inflate the view from the layout XML
@@ -534,7 +539,7 @@ public class appFragment extends Fragment {
         // SurfaceHolder.Callback onCreate() method.
 
         // Set up our special ArrayAdapter for the List View of Exposures
-        mCaptureDesignAdapter = new ExposureArrayAdapter(getActivity(),mDesign);
+        mCaptureDesignAdapter = new ExposureArrayAdapter(getActivity(),mDesign,mDisplayOptions);
         mCaptureDesignListView.setAdapter(mCaptureDesignAdapter);
 
 
@@ -569,14 +574,15 @@ public class appFragment extends Fragment {
 		 * correspond to the arrays of values the return index goes into.
 		 */
 
-        // Set up delay timer switch
-        mDelaySwitch = (Switch) v.findViewById(R.id.delaySwitch);
-        mDelaySwitch.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+        // Set up the settings button
+        mSettingsButton = (Button) v.findViewById(R.id.settingsButton);
+        mSettingsButton.setOnClickListener(new OnClickListener() {
             @Override
-            public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
-                mUseDelay = isChecked;
+            public void onClick(View v) {
+                startActivity(new Intent(getActivity(),SettingsActivity.class));
             }
         });
+
 
         // Set up output format button
         mOutputFormatButton = (Button) v.findViewById(R.id.Button_formatChoice);
@@ -725,6 +731,19 @@ public class appFragment extends Fragment {
     public void onResume(){
         super.onResume();
         Log.v(APP_TAG,"onResume() called.");
+
+        // Load the user settings for the use of delay and the display of parameters
+        SharedPreferences settings = getActivity().getSharedPreferences(APP_TAG,Context.MODE_MULTI_PROCESS);
+        mUseDelay = settings.getBoolean(SettingsActivity.USE_DELAY_KEY,false);
+        mDisplayOptions.showExposureTime = settings.getBoolean(SettingsActivity.SHOW_EXPOSURE_TIME,true);
+        mDisplayOptions.showAperture = settings.getBoolean(SettingsActivity.SHOW_APERTURE,false);
+        mDisplayOptions.showSensitivity = settings.getBoolean(SettingsActivity.SHOW_SENSITIVITY,true);
+        mDisplayOptions.showFocalLength = settings.getBoolean(SettingsActivity.SHOW_FOCAL_LENGTH,false);
+        mDisplayOptions.showFocusDistance = settings.getBoolean(SettingsActivity.SHOW_FOCUS_DISTANCE,true);
+
+        // User choice of display settings could have changed, inform
+        mCaptureDesignAdapter.updateDisplaySettings(mDisplayOptions);
+
         establishActiveResources();
     }
 
@@ -772,6 +791,9 @@ public class appFragment extends Fragment {
                     Log.v(APP_TAG,"Design Template: " + template);
 
                     switch (template){
+                        case BURST:
+                            mDesign = CaptureDesign.Creator.burst(nExp);
+                            break;
                         case SPLIT_TIME:
                             mDesign = CaptureDesign.Creator.splitExposureTime(nExp);
                             break;
@@ -851,11 +873,9 @@ public class appFragment extends Fragment {
                         CaptureDesign newDesign = CaptureDesign.Creator.loadDesignFromJson(file);
                         newDesign.setProcessingSetting(mDesign.getProcessingSetting());
                         mDesign = newDesign;
-                    } catch (NoSuchFieldException nsfe){
-                        Toast.makeText(getActivity(),"Error in Capture Design JSON file: missing required field.",Toast.LENGTH_LONG).show();
                     } catch (IOException ioe){
                         Toast.makeText(getActivity(),"Error reading JSON file.",Toast.LENGTH_LONG).show();
-                    } catch (NoSuchMethodException nsme){
+                    } catch (NoSuchFieldException nsme){
                         Toast.makeText(getActivity(),"Error in Capture Design JSON file: incorrect variable form.",Toast.LENGTH_LONG).show();
                     }
 
@@ -1209,11 +1229,6 @@ public class appFragment extends Fragment {
     public void updateDesignViews(){
         Log.v(APP_TAG,"updateDesignViews() called.");
         mCaptureDesignAdapter.registerNewCaptureDesign(mDesign);
-        mCaptureDesignAdapter.notifyDataSetChanged();
-//        mCaptureDesignAdapter.clear();
-//        mCaptureDesignAdapter.addAll(mDesign.getExposures());
-//        mCaptureDesignListView.setAdapter(mCaptureDesignAdapter);
-//        mDesignNameEditText.setText(mDesign.getDesignName());
     }
 
 

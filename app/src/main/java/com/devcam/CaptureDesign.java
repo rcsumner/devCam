@@ -226,7 +226,7 @@ public class CaptureDesign {
      *
      * Begins the capture process of the entire CaptureDesign.
      * The first four arguments are necessary for this class to control the camera device and
-     * properly place the outputs. The lastis necessary only for generating explicit Exposure
+     * properly place the outputs. The last is necessary only for generating explicit Exposure
      * parameter values if the Exposures in the list have variable parameter values.
      *
      * If the values of all parameters are already explicitly set, a burst is simply captured.
@@ -564,8 +564,8 @@ public class CaptureDesign {
      * CaptureDesign will have the default Intent values, as well as a list of Exposures which is
      * derived from the array-of-objects describing Exposure parameters in the JSON.
      *
-     * If an object in the JSON array does not contain one of the necessary fields, an exception is
-     * thrown.
+     * If an object in the JSON array does not contain one of the necessary fields, it is simply
+     * set as "AUTO".
      *
      * If a variable parameter string does not follow the form "x*AUTO", a different exception is
      * thrown.
@@ -573,10 +573,10 @@ public class CaptureDesign {
      * Currently, no other check on the content is performed, such as making sure the exposureTime
      * can be read as a Long.
      *
-     * I know the capricious use of these specific checked exceptions is probably infuriating, but
+     * I know the capricious use of these specific checked exceptions is probably upsetting, but
      * it works for now.
      */
-        static CaptureDesign loadDesignFromJson(File file) throws NoSuchFieldException, IOException, NoSuchMethodException{
+        static CaptureDesign loadDesignFromJson(File file) throws IOException, NoSuchFieldException{
             CaptureDesign out = new CaptureDesign();
             try {
                 FileInputStream fistream = new FileInputStream(file);
@@ -588,15 +588,10 @@ public class CaptureDesign {
 
                     // While there's another object in this array of JSON Exposures
                     while (reader.hasNext()) {
-                        Exposure tempExposure = new Exposure();
+                        // Make a temporary Exposure which has all fields set to "AUTO". It is the
+                        // duty of the JSON object's fields to overwrite these values now.
+                        Exposure tempExposure = new Exposure(Exposure.ALL_AUTO);
                         reader.beginObject();
-
-                        // These flags make sure all necessary fields for an Exposure were obtained
-                        boolean hadExposureTime = false;
-                        boolean hadAperture = false;
-                        boolean hadSensitivity = false;
-                        boolean hadFocalLength = false;
-                        boolean hadFocusDistance = false;
 
                         // While there's another field in this JSON Exposure
                         while(reader.hasNext()){
@@ -613,14 +608,12 @@ public class CaptureDesign {
                                 JsonToken value = reader.peek();
                                 if (value==JsonToken.NUMBER){
                                     tempExposure.setExposureTime(reader.nextLong());
-                                    hadExposureTime = true;
                                 } else if (value==JsonToken.STRING){
                                     String next = reader.nextString();
                                     if (Exposure.ExposureParameterVariable.checkFeasibleInput(next)) {
                                         tempExposure.recordExposureTimeVar(next);
-                                        hadExposureTime = true;
                                     } else {
-                                        throw new NoSuchMethodException();
+                                        throw new NoSuchFieldException();
                                     }
                                 }
 
@@ -629,29 +622,25 @@ public class CaptureDesign {
                                 JsonToken value = reader.peek();
                                 if (value==JsonToken.NUMBER){
                                     tempExposure.setAperture(Double.valueOf(reader.nextDouble()).floatValue());
-                                    hadAperture = true;
                                 } else if (value==JsonToken.STRING){
                                     String next = reader.nextString();
                                     if (Exposure.ExposureParameterVariable.checkFeasibleInput(next)) {
                                         tempExposure.recordApertureVar(next);
-                                        hadAperture = true;
                                     } else {
-                                        throw new NoSuchMethodException();
+                                        throw new NoSuchFieldException();
                                     }
                                 }
 
-                            } else if (nextName.equals("sensitivity")){
+                            } else if (nextName.equals("sensitivity") || nextName.equals("iso")){
                                 JsonToken value = reader.peek();
                                 if (value==JsonToken.NUMBER){
                                     tempExposure.setSensitivity(reader.nextInt());
-                                    hadSensitivity = true;
                                 } else if (value==JsonToken.STRING){
                                     String next = reader.nextString();
                                     if (Exposure.ExposureParameterVariable.checkFeasibleInput(next)) {
                                         tempExposure.recordSensitivityVar(next);
-                                        hadSensitivity = true;
                                     } else {
-                                        throw new NoSuchMethodException();
+                                        throw new NoSuchFieldException();
                                     }
                                 }
 
@@ -659,14 +648,12 @@ public class CaptureDesign {
                                 JsonToken value = reader.peek();
                                 if (value==JsonToken.NUMBER){
                                     tempExposure.setFocalLength(Double.valueOf(reader.nextDouble()).floatValue());
-                                    hadFocalLength = true;
                                 } else if (value==JsonToken.STRING){
                                     String next = reader.nextString();
                                     if (Exposure.ExposureParameterVariable.checkFeasibleInput(next)) {
                                         tempExposure.recordFocalLengthVar(next);
-                                        hadFocalLength = true;
                                     } else {
-                                        throw new NoSuchMethodException();
+                                        throw new NoSuchFieldException();
                                     }
                                 }
 
@@ -675,14 +662,12 @@ public class CaptureDesign {
                                 if (value==JsonToken.NUMBER){
                                     Double temp = reader.nextDouble();
                                     tempExposure.setFocusDistance(Double.valueOf(temp).floatValue());
-                                    hadFocusDistance = true;
                                 } else if (value==JsonToken.STRING){
                                     String next = reader.nextString();
                                     if (Exposure.ExposureParameterVariable.checkFeasibleInput(next)) {
                                         tempExposure.recordFocusDistanceVar(next);
-                                        hadFocusDistance = true;
                                     } else {
-                                        throw new NoSuchMethodException();
+                                        throw new NoSuchFieldException();
                                     }
                                 }
 
@@ -691,15 +676,6 @@ public class CaptureDesign {
                             }
                         }
                         reader.endObject();
-
-                        // If this JSON had a malformed object without the necessary field:
-                        if (!hadExposureTime
-                                || !hadAperture
-                                || !hadSensitivity
-                                || !hadFocusDistance
-                                || !hadFocalLength){
-                            throw new NoSuchFieldException();
-                        }
 
                         // Add the properly-read Exposure to the list.
                         out.addExposure(tempExposure);
@@ -775,10 +751,10 @@ public class CaptureDesign {
 
       /* CaptureDesign exposureTimeBracketAbsolute(CameraCharacteristics, Range<Long>, int)
       *
-      * Creates a CaptureDesign that is bracketed between two absolute ISO values,
+      * Creates a CaptureDesign that is bracketed between two absolute exposure time values,
       * with the number of steps indicated by the int input.
       *
-      * Bracketing is linear in stops, i.e. exponential in ISO.
+      * Bracketing is linear in exposure time.
       *
       */
         static CaptureDesign exposureTimeBracketAbsolute(CameraCharacteristics camChars,
@@ -808,7 +784,7 @@ public class CaptureDesign {
       * Creates a CaptureDesign that is bracketed between two absolute ISO values,
       * with the number of steps indicated by the int input.
       *
-      * Bracketing is linear in stops, i.e. exponential in ISO.
+      * Bracketing is linear in ISO.
       *
       */
         static CaptureDesign isoBracketAbsolute(CameraCharacteristics camChars,
@@ -840,7 +816,7 @@ public class CaptureDesign {
       * the values given, even if the device is not actually calibrated to have those values be
       * meaningful in meters.
       *
-      * Bracketing is linear in meters.
+      * Bracketing is linear in meters, as is the input Range.
       *
       */
         static CaptureDesign focusBracketAbsolute(CameraCharacteristics camChars,
@@ -855,7 +831,7 @@ public class CaptureDesign {
                 float focuspt = focusRange.getLower() + focusStep*i;
                 float focusDiopters = 1/focuspt;
                 // Only add this exposure if it is within the bounds of the camera's means.
-                if (focusDiopters < camChars.get(CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE)) {
+                if (focusDiopters <= camChars.get(CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE)) {
                     // Create an Exposure from the auto Result and only give it the new focus pt
                     Exposure temp = new Exposure("ALL_AUTO");
                     temp.setFocusDistance(focusDiopters);
@@ -886,8 +862,17 @@ public class CaptureDesign {
         }
 
 
-
-
+     /* static CaptureDesign burst(int n)
+      *
+      * Create a burst sequence of auto-exposed/focused images of length n.
+      */
+        static CaptureDesign burst(int nExp){
+            CaptureDesign output = new CaptureDesign();
+            for (int i=0; i<nExp; i++){
+                output.addExposure(new Exposure(Exposure.ALL_AUTO));
+            }
+            return output;
+        }
 
 
 

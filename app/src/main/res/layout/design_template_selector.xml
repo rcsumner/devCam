@@ -17,7 +17,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:gravity="bottom"
-        android:background="@color/exposure_list_background"
+        android:background="@color/design_background"
         android:id="@+id/designParamsLayout">
 
         <TextView

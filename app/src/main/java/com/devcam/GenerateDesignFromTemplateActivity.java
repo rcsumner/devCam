@@ -23,6 +23,7 @@ import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.CameraMetadata;
 import android.os.Bundle;
 import android.util.Log;
+import android.util.Range;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.inputmethod.EditorInfo;
@@ -39,6 +40,8 @@ import java.text.DecimalFormatSymbols;
 import java.util.ArrayList;
 import java.util.List;
 
+import javax.xml.transform.Templates;
+
 public class GenerateDesignFromTemplateActivity extends Activity {
 
     // These tags are used to indicate the nature of the data returned by this Activity to the
@@ -51,12 +54,13 @@ public class GenerateDesignFromTemplateActivity extends Activity {
     // still needs to be a value associated with each enum, which is used as an index into an array
     // in some places.
     public enum DesignTemplate {
-        SPLIT_TIME(0),
-        RACK_FOCUS(1),
-        BRACKET_EXPOSURE_TIME_RELATIVE(2),
-        BRACKET_EXPOSURE_TIME_ABSOLUTE(3),
-        BRACKET_ISO_RELATIVE(4),
-        BRACKET_ISO_ABSOLUTE(5);
+        BURST(0),
+        SPLIT_TIME(1),
+        RACK_FOCUS(2),
+        BRACKET_EXPOSURE_TIME_RELATIVE(3),
+        BRACKET_EXPOSURE_TIME_ABSOLUTE(4),
+        BRACKET_ISO_RELATIVE(5),
+        BRACKET_ISO_ABSOLUTE(6);
 
         private final int index;
 
@@ -80,6 +84,9 @@ public class GenerateDesignFromTemplateActivity extends Activity {
         public String toString(){
             String output;
             switch (this){
+                case BURST:
+                    output = "Burst of Auto-Exposures";
+                    break;
                 case SPLIT_TIME:
                     output = "Split Exposure Time Evenly";
                     break;
@@ -93,7 +100,7 @@ public class GenerateDesignFromTemplateActivity extends Activity {
                     output = "Bracket Exposure Time around Auto-value";
                     break;
                 case BRACKET_ISO_ABSOLUTE:
-                    output = "Bracket ISO, absolute";
+                    output = "Bracket ISO, Absolute";
                     break;
                 case BRACKET_ISO_RELATIVE:
                     output = "Bracket ISO around Auto-value";
@@ -188,6 +195,15 @@ public class GenerateDesignFromTemplateActivity extends Activity {
                 // Now switch the rest of the views depending on the Template selected
                 mSelectedTemplateInd = position;
                 switch (mDesignTemplateList.get(position)) {
+                    case BURST:
+                        mUnitsTextView.setText("N/A");
+                        // burst template has no need for bounds, so set them unclickable so as
+                        // not to tempt the user. But still set values, so they aren't null.
+                        mLowEditText.setEnabled(false);
+                        mHighEditText.setEnabled(false);
+                        mSelectedLowBound = 0.0f;
+                        mSelectedHighBound = 0.0f;
+                        break;
                     case SPLIT_TIME:
                         mUnitsTextView.setText("N/A");
                         // split time template has no need for bounds, so set them unclickable so as
@@ -290,7 +306,37 @@ public class GenerateDesignFromTemplateActivity extends Activity {
                 if (actionId== EditorInfo.IME_ACTION_DONE){
                     String s = v.getText().toString();
                     try{
-                        mSelectedLowBound = Float.parseFloat(s);
+                        float value = Float.parseFloat(s);
+
+                        // Now, if the value was literal and not relative, make sure it falls within
+                        // the bounds of what the device can apply, and update the view if needed.
+                        // Note we have to check that it falls within both bounds, just in case.
+                        switch (DesignTemplate.getTemplateByIndex(mSelectedTemplateInd)){
+                            case RACK_FOCUS:
+                                // input value is in meters, so convert min focus diopters to meters
+                                float minValue = 1/mCamChars.get(CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE);
+                                if (value<minValue){
+                                    value = minValue;
+                                    mLowEditText.setText(String.valueOf(value));
+                                }
+                                break;
+                            case BRACKET_EXPOSURE_TIME_ABSOLUTE:
+                                Range<Long> expRange = mCamChars.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE);
+                                if (!expRange.contains((long) value)){
+                                    value = expRange.getLower();
+                                    mLowEditText.setText(String.valueOf(expRange.getLower()));
+                                }
+                                break;
+                            case BRACKET_ISO_ABSOLUTE:
+                                Range<Integer> isoRange = mCamChars.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE);
+                                if (!isoRange.contains((int) value)){
+                                    value = isoRange.getLower();
+                                    mLowEditText.setText(String.valueOf(isoRange.getLower()));
+                                }
+                                break;
+                        }
+
+                        mSelectedLowBound = value;
                     } catch (NumberFormatException nfe){
                         Toast.makeText(GenerateDesignFromTemplateActivity.this,
                                 "Please enter valid real number for bound.",
@@ -318,7 +364,37 @@ public class GenerateDesignFromTemplateActivity extends Activity {
                 if (actionId== EditorInfo.IME_ACTION_DONE){
                     String s = v.getText().toString();
                     try{
-                        mSelectedHighBound = Float.parseFloat(s);
+                        float value = Float.parseFloat(s);
+
+                        // Now, if the value was literal and not relative, make sure it falls within
+                        // the bounds of what the device can apply, and update the view if needed.
+                        // Note we have to check that it falls within both bounds, just in case.
+                        switch (DesignTemplate.getTemplateByIndex(mSelectedTemplateInd)){
+                            case RACK_FOCUS:
+                                // input value is in meters, so convert min focus diopters to meters
+                                float minValue = 1/mCamChars.get(CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE);
+                                if (value<minValue){
+                                    value = minValue;
+                                    mHighEditText.setText(String.valueOf(value));
+                                }
+                                break;
+                            case BRACKET_EXPOSURE_TIME_ABSOLUTE:
+                                Range<Long> expRange = mCamChars.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE);
+                                if (!expRange.contains((long) value)){
+                                    value = expRange.getUpper();
+                                    mHighEditText.setText(String.valueOf(expRange.getUpper()));
+                                }
+                                break;
+                            case BRACKET_ISO_ABSOLUTE:
+                                Range<Integer> isoRange = mCamChars.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE);
+                                if (!isoRange.contains((int) value)){
+                                    value = isoRange.getUpper();
+                                    mHighEditText.setText(String.valueOf(isoRange.getUpper()));
+                                }
+                                break;
+                        }
+
+                        mSelectedHighBound = value;
                     } catch (NumberFormatException nfe){
                         Toast.makeText(GenerateDesignFromTemplateActivity.this,
                                 "Please enter valid real number for bound.",

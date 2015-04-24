@@ -175,14 +175,14 @@
         android:layout_height="match_parent"
         android:layout_weight="1"
         android:gravity="center_horizontal"
-        android:orientation="vertical" >
+        android:orientation="vertical"
+        android:background="@color/design_background">
 
         <LinearLayout
             android:id="@+id/LayoutBlock_designParameters"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_weight="0"
-            android:background="@color/design_background"
             android:clickable="false"
             android:orientation="vertical"
             android:gravity="center">
@@ -191,49 +191,6 @@
                 android:orientation="vertical"
                 android:layout_width="fill_parent"
                 android:layout_height="fill_parent">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:gravity="center_horizontal"
-                    android:orientation="vertical"
-                    android:layout_marginBottom="3dp">
-
-                    <LinearLayout
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_gravity="center"
-                        android:paddingRight="2dp" >
-
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="Min Frame Time : " />
-
-                        <TextView
-                            android:id="@+id/minFrameTimeValue"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content" />
-                    </LinearLayout>
-
-                    <LinearLayout
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_gravity="center"
-                        android:paddingLeft="2dp" >
-
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="Output Stall : " />
-
-                        <TextView
-                            android:id="@+id/outputStallValue"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content" />
-                    </LinearLayout>
-
-                </LinearLayout>
 
                 <LinearLayout
                     android:layout_width="match_parent"
@@ -300,46 +257,6 @@
                 android:layout_marginRight="0dp"
                 android:paddingRight="0dp">
 
-                <LinearLayout
-                    android:orientation="horizontal"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:gravity="center|center_vertical|center_horizontal"
-                    android:layout_weight="1">
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:textAppearance="?android:attr/textAppearanceSmall"
-                        android:text="5 sec\ndelay"
-                        android:id="@+id/textView2"
-                        android:textStyle="bold"
-                        android:layout_marginRight="5dp"
-                        android:layout_marginLeft="-5dp" />
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:textAppearance="?android:attr/textAppearanceSmall"
-                        android:text="Off"
-                        android:id="@+id/textView3" />
-
-                    <Switch
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:textOff="Off"
-                        android:textOn="On"
-                        android:id="@+id/delaySwitch"
-                        android:switchMinWidth="50dp"
-                        android:showText="false" />
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:textAppearance="?android:attr/textAppearanceSmall"
-                        android:text="On"
-                        android:id="@+id/textView" />
-                </LinearLayout>
 
                 <LinearLayout
                     android:layout_width="wrap_content"
@@ -363,6 +280,50 @@
                         android:minWidth="24dp" />
                 </LinearLayout>
 
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_horizontal"
+                    android:orientation="vertical"
+                    android:layout_marginBottom="3dp"
+                    android:layout_weight="1">
+
+                    <LinearLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="center"
+                        android:paddingRight="2dp" >
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Min Frame Time : " />
+
+                        <TextView
+                            android:id="@+id/minFrameTimeValue"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content" />
+                    </LinearLayout>
+
+                    <LinearLayout
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="center"
+                        android:paddingLeft="2dp" >
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="Output Stall : " />
+
+                        <TextView
+                            android:id="@+id/outputStallValue"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content" />
+                    </LinearLayout>
+
+                </LinearLayout>
+
             </LinearLayout>
 
         </LinearLayout>
@@ -370,8 +331,15 @@
         <ListView
             android:id="@+id/CaptureDesignListView"
             android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:background="@color/exposure_list_background" ></ListView>
+            android:layout_height="wrap_content"
+            android:background="@color/white"
+            android:layout_weight="1"></ListView>
+
+        <Button
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="devCam Settings"
+            android:id="@+id/settingsButton" />
 
     </LinearLayout>
 
