@@ -264,7 +264,13 @@ public class appFragment extends Fragment {
     private CameraDevice.StateCallback CDSC = new CameraDevice.StateCallback() {
 
         @Override
+        public void onClosed(CameraDevice camera){
+            Log.v(appFragment.APP_TAG,"camera device onClosed() called.");
+        }
+
+        @Override
         public void onDisconnected(CameraDevice camera){
+            Log.v(appFragment.APP_TAG,"camera device onDisconnected() called.");
             // If camera disconnected, free resources.
             mCameraOpenCloseLock.release();
             camera.close();
@@ -273,6 +279,7 @@ public class appFragment extends Fragment {
 
         @Override
         public void onError(CameraDevice camera, int error){
+            Log.v(APP_TAG,"onError() when loading camera device!");
             // If camera error, free resources.
             mCameraOpenCloseLock.release();
             camera.close();
@@ -332,17 +339,17 @@ public class appFragment extends Fragment {
                             if (formats[formatInd]==yuvFormats[yuvInd] && null==mTargetSize){
                                 // This is a valid YUV format, so find its output times
                                 // and sizes
-                                Log.v(APP_TAG,"YUV format: " + formats[formatInd]);
+                                Log.v(APP_TAG,"YUV format: " + CameraReport.cameraConstantStringer("android.graphics.ImageFormat",formats[formatInd]));
                                 Size[] sizes = mStreamMap.getOutputSizes(formats[formatInd]);
                                 for (Size size : sizes){
                                     long frameTime = (mStreamMap.getOutputMinFrameDuration(formats[formatInd], size));
                                     if (size.getHeight()*4 != size.getWidth()*3){
-                                        Log.v(APP_TAG,"Incorrect aspect ratio. Skipping.");
+                                        //Log.v(APP_TAG,"Incorrect aspect ratio. Skipping.");
                                         continue;
                                     }
 
                                     long frameSize = size.getHeight()*size.getWidth();
-                                    Log.v(APP_TAG,"Size " + size + " has minFrameTime " + frameTime);
+                                    //Log.v(APP_TAG,"Size " + size + " has minFrameTime " + frameTime);
                                     if (frameTime < minTime){
                                         minTime = frameTime;
                                         maxSize = 0;
@@ -709,7 +716,7 @@ public class appFragment extends Fragment {
         int[] capabilities = mCamChars.get(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES);
         int prereqs = 0;
         for (int i = 0; i<capabilities.length; i++){
-            if (capabilities[i]==CameraMetadata.REQUEST_AVAILABLE_CAPABILITIES_MANUAL_POST_PROCESSING){
+            if (capabilities[i]==CameraMetadata.REQUEST_AVAILABLE_CAPABILITIES_MANUAL_SENSOR){
                 prereqs++;
             }
             if (capabilities[i]==CameraMetadata.REQUEST_AVAILABLE_CAPABILITIES_MANUAL_POST_PROCESSING){
@@ -1017,6 +1024,7 @@ public class appFragment extends Fragment {
                 throw new RuntimeException("Time out waiting to lock camera opening.");
             }
             cm.openCamera(backCamId, CDSC, mBackgroundHandler);
+            Log.v(APP_TAG,"Open camera called successfully.");
         } catch (CameraAccessException e) {
             e.printStackTrace();
         } catch (InterruptedException e) {

@@ -321,7 +321,7 @@ public class CaptureDesign {
             if (mNeedsAF){
                 state = AutoState.WAITING_FOR_AF;
                 mCaptureCRB.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
-                mCaptureCRB.set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_START);
+                //mCaptureCRB.set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_START);
             }
 
             if (mNeedsAE){
@@ -342,6 +342,9 @@ public class CaptureDesign {
 
     /* CaptureCallback that handles frames that are part of the auto-Intent convergence state
      * machine cycle.
+     *
+     * Note this does not currently catch the situation where the AF will never focus (e.g. if the
+     * scene is too close). It will just continue forever. Fix this later.
      */
     private CameraCaptureSession.CaptureCallback mAutoCCB = new CameraCaptureSession.CaptureCallback() {
 
@@ -356,23 +359,34 @@ public class CaptureDesign {
 
                 // If the AF state has converged, either to in-focus or not-in-focus, advance to
                 // the next state, WAITING_FOR_AE, or if we don't care about AE, just finish.
-                if (CaptureResult.CONTROL_AF_STATE_FOCUSED_LOCKED==afState
-                        || CaptureResult.CONTROL_AF_STATE_NOT_FOCUSED_LOCKED==afState){
-                    Log.v(appFragment.APP_TAG,"- - - AF Converged.");
+                if (CaptureResult.CONTROL_AF_STATE_FOCUSED_LOCKED==afState) {
+                    Log.v(appFragment.APP_TAG, "- - - AF Focused.");
 
-                    if (!mNeedsAE){
-                        Log.v(appFragment.APP_TAG,"- - - Not requiring AE convergence.");
+                    if (!mNeedsAE) {
+                        Log.v(appFragment.APP_TAG, "- - - Not requiring AE convergence.");
                         finishWithAuto(result);
                     } else {
                         state = AutoState.WAITING_FOR_AE;
                     }
 
+                // ELSE:
+                // This should never be entered, but in case we are unfocused, allow the AF machine
+                // to enter INACTIVE again and start a new search.
+                } else if (CaptureResult.CONTROL_AF_STATE_NOT_FOCUSED_LOCKED==afState){
+                    try {
+                        Log.v(appFragment.APP_TAG,"- - - Triggering AF Passive state to lock.");
+                        mCaptureCRB.set(CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER, CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER_IDLE);
+                        mCaptureCRB.set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_CANCEL);
+                        mSession.capture(mCaptureCRB.build(), this, mBackgroundHandler);
+                    } catch (CameraAccessException cae){
+                        cae.printStackTrace();
+                    }
 
-                    // Otherwise, we are in some PASSIVE state (unless we are in INACTIVE AF state,
-                    // which will eventually self-trigger to a PASSIVE state), and we want to
-                    // precipitate the converged-and-locked state, so send a TRIGGER.
-                    // Don't trigger AE though, that will start its process over.
-                } else if(CaptureResult.CONTROL_AF_STATE_INACTIVE!=afState) {
+
+                    // ELSE:
+                    // If we are passively focused, lock the focus (though wait for proof that it is
+                    // locked in the next frame).
+                } else if(CaptureResult.CONTROL_AF_STATE_PASSIVE_FOCUSED==afState) {
                     try {
                         Log.v(appFragment.APP_TAG,"- - - Triggering AF Passive state to lock.");
                         mCaptureCRB.set(CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER, CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER_IDLE);
@@ -381,7 +395,22 @@ public class CaptureDesign {
                     } catch (CameraAccessException cae){
                         cae.printStackTrace();
                     }
+
+                    // ELSE:
+                    // We are either INACTIVE, PASSIVE_SEARCH, or PASSIVE_UNFOCUSED. Just continue
+                    // the search for focus by posting another frame, without triggers so the
+                    // processes don't start again or lock prematurely.
+                } else {
+                    try {
+                        Log.v(appFragment.APP_TAG,"- - - Continue the sequence...");
+                        mCaptureCRB.set(CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER, CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER_IDLE);
+                        mCaptureCRB.set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_IDLE);
+                        mSession.capture(mCaptureCRB.build(), this, mBackgroundHandler);
+                    } catch (CameraAccessException cae){
+                        cae.printStackTrace();
+                    }
                 }
+
             }
 
             if (AutoState.WAITING_FOR_AE==state){
