@@ -48,6 +48,8 @@ public class CaptureDesign {
     // The main Activity makes a callback, registers it here so the CaptureDesign knows what to call
     DesignCaptureCallback mRegisteredCallback;
 
+    Surface mOutputSurface;
+
 
     // This enumeration is for the possible Processing choices Unfortunately, since a number of
     // Android-specific things Intent.putExtra() only work with ints, there still needs to be a
@@ -181,6 +183,9 @@ public class CaptureDesign {
         mCaptureCRB.set(CaptureRequest.CONTROL_AF_MODE,CaptureRequest.CONTROL_AF_MODE_OFF);
         mCaptureCRB.set(CaptureRequest.CONTROL_AE_MODE,CaptureRequest.CONTROL_AE_MODE_OFF);
 
+        // Now that we actually want to save images, send them to the ImageReader surface
+        mCaptureCRB.addTarget(mOutputSurface);
+
         Iterator<Exposure> localExposureIt = mExposures.iterator();
         while (localExposureIt.hasNext()){
             Exposure next = localExposureIt.next();
@@ -251,6 +256,7 @@ public class CaptureDesign {
         mSession = session;
         mBackgroundHandler = backgroundHandler;
         mCamChars = camChars;
+        mOutputSurface = outputSurface;
 
         // If there are no exposures in the list to capture, just exit.
         if (mExposures.size()==0){
@@ -271,7 +277,6 @@ public class CaptureDesign {
 
             // Generate a CaptureRequest.Builder with the appropriate settings
             mCaptureCRB = makeDesignCrb(camera);
-            mCaptureCRB.addTarget(outputSurface);
             // We want the user to be able to see the images as they are captured, as well as the
             // auto-convergence process images to the feel like the system is still active
             mCaptureCRB.addTarget(previewSurface);

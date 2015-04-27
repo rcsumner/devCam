@@ -30,6 +30,7 @@ class ImageSaver implements Runnable {
 	private final String mFilename;
 	private final CameraCharacteristics mCamChars;
 	private final File SAVE_DIR;
+    private final WriteOutCallback mRegisteredCallback;
 
 
     /* Constructor for this "action" class.
@@ -41,12 +42,13 @@ class ImageSaver implements Runnable {
      * - the name of the file, *including extension*
      */
 
-	public ImageSaver(Image image, CaptureResult captureResult, CameraCharacteristics camChars, File saveDir, String filename) {
+	public ImageSaver(Image image, CaptureResult captureResult, CameraCharacteristics camChars, File saveDir, String filename, WriteOutCallback callback) {
 		mImage = image;
 		mCaptureResult = captureResult;
 		mFilename = filename;
 		mCamChars = camChars;
 		SAVE_DIR = saveDir;
+        mRegisteredCallback = callback;
 	}
 
 	@Override
@@ -64,7 +66,7 @@ class ImageSaver implements Runnable {
 		FileOutputStream output = null;
 		ByteBuffer buffer;
 		byte[] bytes;
-
+        boolean success = false;
 
 		switch (mImage.getFormat()){
 
@@ -83,14 +85,15 @@ class ImageSaver implements Runnable {
 			} finally {
                 Log.v(appFragment.APP_TAG,"Closing image to free buffer.");
                 mImage.close(); // close this to free up buffer for other images
-				if (null != output) {
-					try {
-						output.close();
-					} catch (IOException e) {
-						e.printStackTrace();
-					}
-				}
-			}
+                if (null != output) {
+                    try {
+                        output.close();
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                }
+                mRegisteredCallback.onImageSaved(success,mFilename); //let the main Activity know we're done
+            }
 			break;
 
         // Saving RAW_SENSOR just uses the built-in DngCreator, which is nice
@@ -107,15 +110,15 @@ class ImageSaver implements Runnable {
 			} finally {
                 Log.v(appFragment.APP_TAG,"Closing image to free buffer.");
                 mImage.close(); // close this to free up buffer for other images
-				dc = null;
-				if (null != output) {
-					try {
-						output.close();
-					} catch (IOException e) {
-						e.printStackTrace();
-					}
-				}
-			}
+                if (null != output) {
+                    try {
+                        output.close();
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                }
+                mRegisteredCallback.onImageSaved(success,mFilename); //let the main Activity know we're done
+            }
 			break;
 
         // YUV_420_888 images are saved in a format of our own devising. First write out the
@@ -145,6 +148,7 @@ class ImageSaver implements Runnable {
 					buffer.get(bytes); // copies image from buffer to byte array
 					output.write(bytes);	// write the byte array to file
 				}
+                success = true;
 			} catch (FileNotFoundException e) {
 				e.printStackTrace();
 			} catch (IOException e) {
@@ -159,10 +163,23 @@ class ImageSaver implements Runnable {
 						e.printStackTrace();
 					}
 				}
+                mRegisteredCallback.onImageSaved(success,mFilename); //let the main Activity know we're done
 			}
 			break;
 		}
 
 	}
+
+
+
+    /* We use a callback class to indicate in the main thread when the ImageSaver has finished
+     * writing out the file. This is useful for formats that take a long time to write
+     * (e.g. RAW_SENSOR, YUV_420_888) after capture, so the app doesn't quit until after the images
+     * are saved.
+     */
+    static abstract class WriteOutCallback{
+        abstract void onImageSaved(boolean success,String filename);
+    }
+
 
 }

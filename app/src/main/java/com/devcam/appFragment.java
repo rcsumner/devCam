@@ -152,6 +152,10 @@ public class appFragment extends Fragment {
     // The CaptureDesign the app is working with at the moment
     private CaptureDesign mDesign = new CaptureDesign();
 
+    // Keep track of how many image files have been written out, which may happen much later
+    // than the event of them being saved.
+    private int mNumImagesLeftToSave;
+
 
 
     // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
@@ -203,28 +207,28 @@ public class appFragment extends Fragment {
 
         @Override
         public void onImageAvailable(ImageReader reader) {
-            Log.v(APP_TAG,"IMAGE READY!");
+            Log.v(APP_TAG,"IMAGE READY! Saving to DesignResult.");
 
             Image image = reader.acquireNextImage();
 
             // Parse to see if this image came from the Auto Requests or the Capture Request
             DesignResult designResult = mDesign.getDesignResult();
-            // First check to see if mDesign even has a design result yet. This
-            // check may fail in the case of recurring auto requests still in
-            // the pipeline after a design has been fully captured and after
-            // mDesign has been reassigned to a new CaptureDesign object
-            if (designResult!=null){
-                if (designResult.containsCaptureTimestamp(image.getTimestamp())){
+//            // First check to see if mDesign even has a design result yet. This
+//            // check may fail in the case of recurring auto requests still in
+//            // the pipeline after a design has been fully captured and after
+//            // mDesign has been reassigned to a new CaptureDesign object
+//            if (designResult!=null){
+//                if (designResult.containsCaptureTimestamp(image.getTimestamp())){
                     designResult.recordImage(image);
-                    Log.v(appFragment.APP_TAG," - - Image ready was a desired frame. Saving image. - -");
-                } else {
-                    Log.v(appFragment.APP_TAG," - - Image ready was from pre-capture auto sequence. Not saving image. - -");
-                    image.close();
-                }
-            } else {
-                Log.v(APP_TAG," - - Leftover Image. Discard. - - ");
-                image.close();
-            }
+//                    Log.v(appFragment.APP_TAG," - - Image ready was a desired frame. Saving image. - -");
+//                } else {
+//                    Log.v(appFragment.APP_TAG," - - Image ready was from pre-capture auto sequence. Not saving image. - -");
+//                    image.close();
+//                }
+//            } else {
+//                Log.v(APP_TAG," - - Leftover Image. Discard. - - ");
+//                image.close();
+//            }
         }
 
     };
@@ -390,6 +394,43 @@ public class appFragment extends Fragment {
 
 
 
+
+    ImageSaver.WriteOutCallback mWriteOutCallback = new ImageSaver.WriteOutCallback() {
+
+        @Override
+        void onImageSaved(boolean success, String filename) {
+
+            // Register the saved Image with the file system
+            File IM_SAVE_DIR = new File(appFragment.CAPTURE_DIR,mDesign.getDesignName());
+            File imFile = new File(IM_SAVE_DIR,filename);
+            addFileToMTP(imFile.getAbsolutePath());
+
+            // Now check to see if all of the images have been saved. If so, we can restore control
+            // to the user and remove the "Saving images" sign.
+            mNumImagesLeftToSave--;
+            Log.v(APP_TAG,"Writeout of image: " + filename + " : " + success);
+            Log.v(APP_TAG, mNumImagesLeftToSave + " image files left to save.");
+
+            if (mNumImagesLeftToSave ==0) {
+                Log.v(APP_TAG, "Done saving images. Restore control to app.");
+
+                // Remove "saving images" sign from sight.
+                // Must be done in main thread, which created the View.
+                mMainHandler.post(new Runnable() {
+                    public void run() {
+                        mCapturingDesignTextView.setVisibility(View.INVISIBLE);
+                        mCaptureButton.setVisibility(View.VISIBLE);
+                    }
+                });
+
+                setButtonsClickable(true);
+            }
+        }
+    };
+
+
+
+
     /* Callback for the CaptureDesign's capture process. Whenever a frame for
      * the Design is captured, it is sent here for saving. When the entire
      * Design has been capture the DesignResult is sent here for write-out
@@ -405,42 +446,33 @@ public class appFragment extends Fragment {
             IM_SAVE_DIR.mkdir();
 
             // Post the images to be saved on another thread
-            mImageSaverHandler.post(new ImageSaver(image, result, mCamChars, IM_SAVE_DIR, filename));
+            mImageSaverHandler.post(new ImageSaver(image, result, mCamChars, IM_SAVE_DIR, filename, mWriteOutCallback));
         }
 
+        // This is called when the images are done being captured, NOT when they are done being
+        // written to disk.
         @Override
         void onFinished(final DesignResult designResult){
 
-            // Actually save the images and metadata and request
+            // Here, save the metadata and the request itself, and register them with the system
+            // The onImageSaved() callback method will register the actual image files when ready.
+
             File IM_SAVE_DIR = new File(appFragment.CAPTURE_DIR,mDesign.getDesignName());
 
             // First, save JSON file with array of metadata
             File metadataFile = new File(IM_SAVE_DIR,mDesign.getDesignName() + "_capture_metadata"+".json");
 
-            List<String> imageFileNames = designResult.getFilenames();
-
-            CameraReport.writeCaptureResultsToFile(designResult.getCaptureResults(),imageFileNames, metadataFile);
+            CameraReport.writeCaptureResultsToFile(designResult.getCaptureResults(),designResult.getFilenames(), metadataFile);
+            addFileToMTP(metadataFile.getAbsolutePath());
 
             // Now, write out a txt file with the information of the original
             // request for the capture design, to see how it compares with results
             File requestFile = new File(IM_SAVE_DIR,mDesign.getDesignName()+"_design_request"+".txt");
             mDesign.writeOut(requestFile);
+            addFileToMTP(requestFile.getAbsolutePath());
 
-            // Now send the file names of every file just created for this
-            // CaptureDesign to the system's record via the media scanner
-            String[] filePathsToAdd = new String[imageFileNames.size()+2];
-            int i=0;
-            for(String img : imageFileNames){
-                filePathsToAdd[i++]=new File(IM_SAVE_DIR,img).getAbsolutePath();
-            }
-            filePathsToAdd[i++]=metadataFile.getAbsolutePath();
-            filePathsToAdd[i++]=requestFile.getAbsolutePath();
-            addFilesToMTP(filePathsToAdd);
-
-
-            // Make a new CaptureDesign based on the current
-            // one, with a new name, so the current results
-            // don't get overwritten if button pushed again.
+            // Make a new CaptureDesign based on the current one, with a new name, so the current
+            // results don't get overwritten if button pushed again.
             // Do this first, so views update in the next step.
             mDesign = new CaptureDesign(mDesign);
 
@@ -448,8 +480,8 @@ public class appFragment extends Fragment {
             // Must be done in main thread, which created the View.
             mMainHandler.post(new Runnable(){
                 public void run(){
-                    mCapturingDesignTextView.setVisibility(View.INVISIBLE);
-                    mCaptureButton.setVisibility(View.VISIBLE);
+                    mCapturingDesignTextView.setText("Saving Images.");
+
                     // Display to the user how much time passed between the
                     // first opening and the last closing of the shutter. Counts on the image
                     // timestamp generator being at least SOMEWHAT accurate.
@@ -457,8 +489,8 @@ public class appFragment extends Fragment {
                     CaptureResult firstResult = designResult.getCaptureResult(0);
                     long captureTime = (lastResult.get(CaptureResult.SENSOR_TIMESTAMP)
                             + lastResult.get(CaptureResult.SENSOR_EXPOSURE_TIME)
-                            - firstResult.get(CaptureResult.SENSOR_TIMESTAMP))/1000000; //display in ms
-                    Toast.makeText(getActivity(), "Capture Sequence Completed in " + captureTime + " ms.", Toast.LENGTH_SHORT).show();
+                            - firstResult.get(CaptureResult.SENSOR_TIMESTAMP));
+                    Toast.makeText(getActivity(), "Capture Sequence Completed in " + CameraReport.nsToString(captureTime), Toast.LENGTH_SHORT).show();
                     updateDesignViews();
                 }
             });
@@ -479,7 +511,6 @@ public class appFragment extends Fragment {
                 cae.printStackTrace();
             }
 
-            setButtonsClickable(true);
         }
 
     };
@@ -697,10 +728,15 @@ public class appFragment extends Fragment {
                             mCaptureButton.setText((secondsTillFinish/1000) + " s");
                         }
                         public void onFinish(){
+
+                            mNumImagesLeftToSave = mDesign.getExposures().size();
+
                             mDesign.startCapture(mCamera, mCaptureSession, mImageReader.getSurface(),
                                     mPreviewSurfaceHolder.getSurface(), mBackgroundHandler,mCamChars);
                             // inform user sequence is being captured
+                            mCapturingDesignTextView.setText("Capturing");
                             mCapturingDesignTextView.setVisibility(View.VISIBLE);
+
                             mCaptureButton.setVisibility(View.INVISIBLE);
                             mCaptureButton.setText(R.string.captureText);
                         }
@@ -752,6 +788,7 @@ public class appFragment extends Fragment {
         mCaptureDesignAdapter.updateDisplaySettings(mDisplayOptions);
 
         establishActiveResources();
+
     }
 
     // onPause() called before the activity is finished, good place for
@@ -1271,6 +1308,7 @@ public class appFragment extends Fragment {
         mOutputSizeButton.setClickable(onoff);
         mProcessingButton.setClickable(onoff);
         mSplitAmountButton.setClickable(onoff);
+        mSettingsButton.setClickable(onoff);
     }
 
 
