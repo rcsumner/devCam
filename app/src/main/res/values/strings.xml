@@ -8,4 +8,5 @@
     <string name="loadDesignText">Load From File</string>
     <string name="autoWarningText">Auto</string>
     <string name="captureText">Capture!</string>
+    <string name="remote_default_text">devCam Remote Capture</string>
 </resources>

@@ -85,18 +85,18 @@ public class DesignResult {
      */
 	public void recordCaptureResult(CaptureResult result){
 		mCaptureResults.add(result);
-		Log.v(appFragment.APP_TAG, mCaptureResults.size() + " CaptureResults Recorded.");
+		Log.v(DevCamActivity.APP_TAG, mCaptureResults.size() + " CaptureResults Recorded.");
 		for (int i=0; i<mImages.size(); i++){
-			Log.v(appFragment.APP_TAG,"Comparing with stored Image " + i);
+			Log.v(DevCamActivity.APP_TAG,"Comparing with stored Image " + i);
 			if (mImages.get(i).getTimestamp()==result.get(CaptureResult.SENSOR_TIMESTAMP)){
 				sendImageForWriting(mImages.get(i),result);
 				mImages.remove(i); // remove from List because we can't access this image once it is close()'d by the ImageSaver
-				Log.v(appFragment.APP_TAG,mImages.toString());
+				Log.v(DevCamActivity.APP_TAG,mImages.toString());
 				checkIfComplete();
 				return;
 			}
 		}
-		Log.v(appFragment.APP_TAG,"No existing Image found. Storing for later.");
+		Log.v(DevCamActivity.APP_TAG,"No existing Image found. Storing for later.");
 	}
 
 
@@ -113,14 +113,14 @@ public class DesignResult {
 			if (result.get(CaptureResult.SENSOR_TIMESTAMP)==image.getTimestamp()){
 				sendImageForWriting(image,result);
 				checkIfComplete();
-				Log.v(appFragment.APP_TAG,"Existing CaptureResult matched to Image. Writing out.");
+				Log.v(DevCamActivity.APP_TAG,"Existing CaptureResult matched to Image. Writing out.");
 				return;
 			}
 		}
 		
 		// If no associated CaptureResult was found, save the image for later.
 		mImages.add(image);
-		Log.v(appFragment.APP_TAG,"No existing CaptureResult found. Storing for later.");
+		Log.v(DevCamActivity.APP_TAG,"No existing CaptureResult found. Storing for later.");
 	}
 
 
@@ -137,7 +137,7 @@ public class DesignResult {
 
     private void checkIfComplete(){
         if (mFilenames.size()==mDesignLength){
-            Log.v(appFragment.APP_TAG,"DesignResult: Capture Sequence Complete. Saving results. ");
+            Log.v(DevCamActivity.APP_TAG,"DesignResult: Capture Sequence Complete. Saving results. ");
             mDesign.getCallback().onFinished(this);
         }
     }

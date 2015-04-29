@@ -299,7 +299,7 @@ public class Exposure {
         ExposureParameterVariable(String input){
             // First, make sure input is correct. Should have already been checked, actually.
             if (!checkFeasibleInput(input)){
-                Log.e(appFragment.APP_TAG,"Input string to Parameter Variable was malformed! Using Default.");
+                Log.e(DevCamActivity.APP_TAG,"Input string to Parameter Variable was malformed! Using Default.");
                 multiplier = 1.0f;
                 variable = "Auto";
                 return;

@@ -47,7 +47,6 @@ public class CaptureDesign {
 
     // The main Activity makes a callback, registers it here so the CaptureDesign knows what to call
     DesignCaptureCallback mRegisteredCallback;
-
     Surface mOutputSurface;
 
 
@@ -162,6 +161,7 @@ public class CaptureDesign {
 
         } catch (CameraAccessException cae){
             cae.printStackTrace();
+            mRegisteredCallback.onFailed();
             return null;
         }
     }
@@ -175,7 +175,7 @@ public class CaptureDesign {
      * and the Exposures better have explicit values for all parameters.
      */
     private void captureSequenceBurst(){
-        Log.v(appFragment.APP_TAG,"- - - - - Capturing Exposure Sequence as a Burst.");
+        Log.v(DevCamActivity.APP_TAG,"- - - - - Capturing Exposure Sequence as a Burst.");
         List<CaptureRequest> burstRequests= new ArrayList<CaptureRequest>();
 
         // Though some of them may have been originally derived from the scene, all parameter values
@@ -202,6 +202,7 @@ public class CaptureDesign {
         try {
             mSession.captureBurst(burstRequests,frameCCB, mBackgroundHandler);
         } catch (CameraAccessException cae) {
+            mRegisteredCallback.onFailed();
             cae.printStackTrace();
         }
     }
@@ -215,7 +216,7 @@ public class CaptureDesign {
      * parameter values.
      */
     void fillAutoValues(CameraCharacteristics camChars,CaptureResult autoResult){
-        Log.v(appFragment.APP_TAG,"Filling in Exposure values based on CaptureResult.");
+        Log.v(DevCamActivity.APP_TAG,"Filling in Exposure values based on CaptureResult.");
         for (Exposure exp : mExposures){
             if (exp.hasVariableValues()){
                 exp.fixValues(camChars,autoResult);
@@ -243,6 +244,9 @@ public class CaptureDesign {
      * capture commands which recur "manually" if the state isn't converged yet. This gives us more
      * control over the entire process, so there aren't errant frames going through the camera
      * device and changing settings at all.
+     *
+     * Note the preview Surface is necessary to catch output of the preparatory frames. Or at least
+     * SOME surface is necessary there.
      */
 
     public void startCapture(CameraDevice camera,
@@ -252,6 +256,13 @@ public class CaptureDesign {
                              Handler backgroundHandler,
                              CameraCharacteristics camChars){
 
+        //First, make sure a callback has been registered
+        if (mRegisteredCallback==null){
+            Log.v(DevCamActivity.APP_TAG,"No registered Callback for Capture Design. Aborting capture.");
+            mRegisteredCallback.onFailed();
+            return;
+        }
+
         // Store the two pieces related to camera control which we will need later in callbacks
         mSession = session;
         mBackgroundHandler = backgroundHandler;
@@ -260,7 +271,7 @@ public class CaptureDesign {
 
         // If there are no exposures in the list to capture, just exit.
         if (mExposures.size()==0){
-            Log.v(appFragment.APP_TAG,"No Exposures in list to capture!");
+            Log.v(DevCamActivity.APP_TAG,"No Exposures in list to capture!");
             return;
         }
 
@@ -271,8 +282,8 @@ public class CaptureDesign {
         mDesignResult = new DesignResult(mDesignName,mExposures.size(),this);
 
         try {
-            Log.v(appFragment.APP_TAG,"- - - - - - - - - - - - - - - - - - - - - - - - - - - - -");
-            Log.v(appFragment.APP_TAG,"Starting Design Capture. Stop repeating preview images.");
+            Log.v(DevCamActivity.APP_TAG,"- - - - - - - - - - - - - - - - - - - - - - - - - - - - -");
+            Log.v(DevCamActivity.APP_TAG,"Starting Design Capture. Stop repeating preview images.");
             session.stopRepeating(); // Stop the preview repeating requests from clogging the works
 
             // Generate a CaptureRequest.Builder with the appropriate settings
@@ -313,7 +324,7 @@ public class CaptureDesign {
             // If the Exposures don't require ANY Auto information, i.e. if all parameter values
             // were explicit, simply capture the burst.
             if (withoutVariables==mExposures.size()){
-                Log.v(appFragment.APP_TAG,"No Auto needed, simply capturing burst.");
+                Log.v(DevCamActivity.APP_TAG,"No Auto needed, simply capturing burst.");
                 captureSequenceBurst();
                 return;
             }
@@ -339,6 +350,7 @@ public class CaptureDesign {
             mSession.capture(mCaptureCRB.build(), mAutoCCB, mBackgroundHandler);
 
         } catch (CameraAccessException cae){
+            mRegisteredCallback.onFailed();
             cae.printStackTrace();
         }
     }
@@ -356,19 +368,19 @@ public class CaptureDesign {
         @Override
         public void onCaptureCompleted(CameraCaptureSession session,
                                        CaptureRequest request,TotalCaptureResult result){
-            Log.v(appFragment.APP_TAG,"Auto State Check-in! - - - ");
+            Log.v(DevCamActivity.APP_TAG,"Auto State Check-in! - - - ");
 
             if (AutoState.WAITING_FOR_AF==state){
                 Integer afState = result.get(CaptureResult.CONTROL_AF_STATE);
-                Log.v(appFragment.APP_TAG,"- - - AF_STATE: " +CameraReport.sContextMap.get("android.control.afState").get(afState));
+                Log.v(DevCamActivity.APP_TAG,"- - - AF_STATE: " +CameraReport.sContextMap.get("android.control.afState").get(afState));
 
                 // If the AF state has converged, either to in-focus or not-in-focus, advance to
                 // the next state, WAITING_FOR_AE, or if we don't care about AE, just finish.
                 if (CaptureResult.CONTROL_AF_STATE_FOCUSED_LOCKED==afState) {
-                    Log.v(appFragment.APP_TAG, "- - - AF Focused.");
+                    Log.v(DevCamActivity.APP_TAG, "- - - AF Focused.");
 
                     if (!mNeedsAE) {
-                        Log.v(appFragment.APP_TAG, "- - - Not requiring AE convergence.");
+                        Log.v(DevCamActivity.APP_TAG, "- - - Not requiring AE convergence.");
                         finishWithAuto(result);
                     } else {
                         state = AutoState.WAITING_FOR_AE;
@@ -379,11 +391,12 @@ public class CaptureDesign {
                 // to enter INACTIVE again and start a new search.
                 } else if (CaptureResult.CONTROL_AF_STATE_NOT_FOCUSED_LOCKED==afState){
                     try {
-                        Log.v(appFragment.APP_TAG,"- - - Triggering AF Passive state to lock.");
+                        Log.v(DevCamActivity.APP_TAG,"- - - Triggering AF Passive state to lock.");
                         mCaptureCRB.set(CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER, CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER_IDLE);
                         mCaptureCRB.set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_CANCEL);
                         mSession.capture(mCaptureCRB.build(), this, mBackgroundHandler);
                     } catch (CameraAccessException cae){
+                        mRegisteredCallback.onFailed();
                         cae.printStackTrace();
                     }
 
@@ -393,11 +406,12 @@ public class CaptureDesign {
                     // locked in the next frame).
                 } else if(CaptureResult.CONTROL_AF_STATE_PASSIVE_FOCUSED==afState) {
                     try {
-                        Log.v(appFragment.APP_TAG,"- - - Triggering AF Passive state to lock.");
+                        Log.v(DevCamActivity.APP_TAG,"- - - Triggering AF Passive state to lock.");
                         mCaptureCRB.set(CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER, CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER_IDLE);
                         mCaptureCRB.set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_START);
                         mSession.capture(mCaptureCRB.build(), this, mBackgroundHandler);
                     } catch (CameraAccessException cae){
+                        mRegisteredCallback.onFailed();
                         cae.printStackTrace();
                     }
 
@@ -407,11 +421,12 @@ public class CaptureDesign {
                     // processes don't start again or lock prematurely.
                 } else {
                     try {
-                        Log.v(appFragment.APP_TAG,"- - - Continue the sequence...");
+                        Log.v(DevCamActivity.APP_TAG,"- - - Continue the sequence...");
                         mCaptureCRB.set(CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER, CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER_IDLE);
                         mCaptureCRB.set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_IDLE);
                         mSession.capture(mCaptureCRB.build(), this, mBackgroundHandler);
                     } catch (CameraAccessException cae){
+                        mRegisteredCallback.onFailed();
                         cae.printStackTrace();
                     }
                 }
@@ -420,15 +435,15 @@ public class CaptureDesign {
 
             if (AutoState.WAITING_FOR_AE==state){
                 Integer aeState = result.get(CaptureResult.CONTROL_AE_STATE);
-                Log.v(appFragment.APP_TAG,"- - - AE_STATE: " +CameraReport.sContextMap.get("android.control.aeState").get(aeState));
+                Log.v(DevCamActivity.APP_TAG,"- - - AE_STATE: " +CameraReport.sContextMap.get("android.control.aeState").get(aeState));
                 if (CaptureResult.CONTROL_AE_STATE_CONVERGED==aeState ||
                         CaptureResult.CONTROL_AE_STATE_FLASH_REQUIRED==aeState) {
-                    Log.v(appFragment.APP_TAG,"- - - AE converged.");
+                    Log.v(DevCamActivity.APP_TAG,"- - - AE converged.");
                     finishWithAuto(result);
                 } else {
                     try {
                         // Auto process is already in progress, so we don't need/want triggers to start them again
-                        Log.v(appFragment.APP_TAG,"- - - Trying again for AE convergence.");
+                        Log.v(DevCamActivity.APP_TAG,"- - - Trying again for AE convergence.");
                         mCaptureCRB.set(CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER, CaptureRequest.CONTROL_AE_PRECAPTURE_TRIGGER_IDLE);
                         mCaptureCRB.set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_IDLE);
                         mSession.capture(mCaptureCRB.build(), this, mBackgroundHandler);
@@ -446,7 +461,7 @@ public class CaptureDesign {
          * the state has been met, we can lock the values from it and capture the entire burst.
          */
         private void finishWithAuto(CaptureResult result){
-            Log.v(appFragment.APP_TAG,"- - - Finished with the pre-capture Auto sequence.");
+            Log.v(DevCamActivity.APP_TAG,"- - - Finished with the pre-capture Auto sequence.");
 
             // Now fill in the variable parameter values based on what we found, and capture.
             fillAutoValues(mCamChars,result);
@@ -474,7 +489,7 @@ public class CaptureDesign {
         @Override
         public void onCaptureCompleted(CameraCaptureSession session,
                                        CaptureRequest request, TotalCaptureResult result){
-            Log.v(appFragment.APP_TAG,"Frame capture completed, result saved to DesignResult.");
+            Log.v(DevCamActivity.APP_TAG,"Frame capture completed, result saved to DesignResult.");
 
             // Store the result for later matching with an Image and writing out
             mDesignResult.recordCaptureResult(result);
@@ -485,7 +500,7 @@ public class CaptureDesign {
             // Image/CaptureResult pair has been recorded and written out.
             mNumCaptured++;
             if (mNumCaptured==mExposures.size()){
-                Log.v(appFragment.APP_TAG,"That was the last exposure to capture!");
+                Log.v(DevCamActivity.APP_TAG,"That was the last exposure to capture!");
                 return;
             }
 
@@ -494,9 +509,9 @@ public class CaptureDesign {
         @Override
         public void onCaptureFailed(CameraCaptureSession session,
                                     CaptureRequest request, CaptureFailure failure){
-            Log.v(appFragment.APP_TAG,"!!! Frame capture failure! Writing out the failed CaptureRequest !!!");
+            Log.v(DevCamActivity.APP_TAG,"!!! Frame capture failure! Writing out the failed CaptureRequest !!!");
             // If the capture failed, write out a JSON file with the metadata about it.
-            File file = new File(appFragment.APP_DIR,"Failed_CaptureRequest_"+".json");
+            File file = new File(DevCamActivity.APP_DIR,"Failed_CaptureRequest_"+".json");
 
             CameraReport.writeCaptureRequestToFile(request, file);
 
@@ -518,6 +533,7 @@ public class CaptureDesign {
      * regain control of appropriate things, like the capture session to reinstate previews.
      */
     static abstract class DesignCaptureCallback {
+        abstract void onFailed();
         abstract void onFinished(DesignResult designResult);
         abstract void onImageReady(Image image, CaptureResult result, String filename);
     }
@@ -718,11 +734,11 @@ public class CaptureDesign {
                     reader.endArray();
                     reader.close();
                 } catch (IOException ioe) {
-                    Log.e(appFragment.APP_TAG,"IOException reading Design JSON file.");
+                    Log.e(DevCamActivity.APP_TAG,"IOException reading Design JSON file.");
                     throw ioe;
                 }
             } catch (FileNotFoundException fnfe){
-                Log.e(appFragment.APP_TAG,"Design JSON file not found.");
+                Log.e(DevCamActivity.APP_TAG,"Design JSON file not found.");
             }
             return out;
         }

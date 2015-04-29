@@ -32,7 +32,7 @@ public class SettingsActivity extends Activity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        Log.v(appFragment.APP_TAG, "SettingsActivity Created.");
+        Log.v(DevCamActivity.APP_TAG, "SettingsActivity Created.");
 
         // Hide the action bar so the activity gets the full screen
         getActionBar().hide();
@@ -47,7 +47,7 @@ public class SettingsActivity extends Activity {
         mFocalLengthBox = (CheckBox) findViewById(R.id.focalLengthCheckBox);
         mSwitch = (Switch) findViewById(R.id.delaySwitch);
 
-        SharedPreferences settings = getSharedPreferences(appFragment.APP_TAG, Context.MODE_MULTI_PROCESS);
+        SharedPreferences settings = getSharedPreferences(DevCamActivity.APP_TAG, Context.MODE_MULTI_PROCESS);
 
         mExposureTimeBox.setChecked(settings.getBoolean(SHOW_EXPOSURE_TIME,true));
         mApertureBox.setChecked(settings.getBoolean(SHOW_APERTURE,false)); // this is often fixed
@@ -61,7 +61,7 @@ public class SettingsActivity extends Activity {
         mOKbutton.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v){
-                SharedPreferences.Editor editor = getSharedPreferences(appFragment.APP_TAG, Context.MODE_MULTI_PROCESS).edit();
+                SharedPreferences.Editor editor = getSharedPreferences(DevCamActivity.APP_TAG, Context.MODE_MULTI_PROCESS).edit();
                 editor.putBoolean(SHOW_EXPOSURE_TIME,mExposureTimeBox.isChecked());
                 editor.putBoolean(SHOW_APERTURE,mApertureBox.isChecked());
                 editor.putBoolean(SHOW_SENSITIVITY,mSensitivityBox.isChecked());

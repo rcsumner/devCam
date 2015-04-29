@@ -53,7 +53,7 @@ class ImageSaver implements Runnable {
 
 	@Override
 	public void run() {
-		Log.v(appFragment.APP_TAG, "ImageSaver running!");
+		Log.v(DevCamActivity.APP_TAG, "ImageSaver running!");
 
         // Make sure we have a directory to save the image to.
 		if (!(SAVE_DIR.mkdir() || SAVE_DIR.isDirectory())){
@@ -78,12 +78,13 @@ class ImageSaver implements Runnable {
 			try {
 				output = new FileOutputStream(file);
 				output.write(bytes);	// write the byte array to file
+                success = true;
 			} catch (FileNotFoundException e) {
 				e.printStackTrace();
 			} catch (IOException e) {
 				e.printStackTrace();
 			} finally {
-                Log.v(appFragment.APP_TAG,"Closing image to free buffer.");
+                Log.v(DevCamActivity.APP_TAG,"Closing image to free buffer.");
                 mImage.close(); // close this to free up buffer for other images
                 if (null != output) {
                     try {
@@ -92,7 +93,9 @@ class ImageSaver implements Runnable {
                         e.printStackTrace();
                     }
                 }
-                mRegisteredCallback.onImageSaved(success,mFilename); //let the main Activity know we're done
+                if (mRegisteredCallback!=null) {
+                    mRegisteredCallback.onImageSaved(success, mFilename); //let the main Activity know we're done
+                }
             }
 			break;
 
@@ -103,12 +106,13 @@ class ImageSaver implements Runnable {
 			try {
 				output = new FileOutputStream(file);
 				dc.writeImage(output, mImage);
+                success = true;
 			} catch (FileNotFoundException e) {
 				e.printStackTrace();
 			} catch (IOException e) {
 				e.printStackTrace();
 			} finally {
-                Log.v(appFragment.APP_TAG,"Closing image to free buffer.");
+                Log.v(DevCamActivity.APP_TAG,"Closing image to free buffer.");
                 mImage.close(); // close this to free up buffer for other images
                 if (null != output) {
                     try {
@@ -117,7 +121,9 @@ class ImageSaver implements Runnable {
                         e.printStackTrace();
                     }
                 }
-                mRegisteredCallback.onImageSaved(success,mFilename); //let the main Activity know we're done
+                if (mRegisteredCallback!=null) {
+                    mRegisteredCallback.onImageSaved(success, mFilename); //let the main Activity know we're done
+                }
             }
 			break;
 
@@ -154,7 +160,7 @@ class ImageSaver implements Runnable {
 			} catch (IOException e) {
 				e.printStackTrace();
 			} finally {
-                Log.v(appFragment.APP_TAG,"Closing image to free buffer.");
+                Log.v(DevCamActivity.APP_TAG,"Closing image to free buffer.");
                 mImage.close(); // close this to free up buffer for other images
 				if (null != output) {
 					try {
@@ -163,7 +169,9 @@ class ImageSaver implements Runnable {
 						e.printStackTrace();
 					}
 				}
-                mRegisteredCallback.onImageSaved(success,mFilename); //let the main Activity know we're done
+                if (mRegisteredCallback!=null) {
+                    mRegisteredCallback.onImageSaved(success, mFilename); //let the main Activity know we're done
+                }
 			}
 			break;
 		}

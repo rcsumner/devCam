@@ -139,7 +139,7 @@ public class GenerateDesignFromTemplateActivity extends Activity {
     @Override
     public void onCreate(Bundle savedInstanceState){
         super.onCreate(savedInstanceState);
-        Log.v(appFragment.APP_TAG,"GenerateDesignFromTemplate Activity Created.");
+        Log.v(DevCamActivity.APP_TAG,"GenerateDesignFromTemplate Activity Created.");
 
         // Hide the action bar so the activity gets the full screen
         getActionBar().hide();
@@ -169,7 +169,7 @@ public class GenerateDesignFromTemplateActivity extends Activity {
             public void onItemClick(AdapterView<?> parent, View view, int position, long id) {
                 // When an item from the list has been selected, change the units in the display
                 // appropriately and record which DesignTemplate was selected.
-                Log.v(appFragment.APP_TAG,"Clicked list position : " + position);
+                Log.v(DevCamActivity.APP_TAG,"Clicked list position : " + position);
                 parent.setSelection(position); //highlight which was selected
 
                 // Now that template has been selected, let user put in params
@@ -287,7 +287,7 @@ public class GenerateDesignFromTemplateActivity extends Activity {
                         mNexpEditText.setText("");
                     }
                 }
-                Log.v(appFragment.APP_TAG, "nExp: " + mSelectedNexp);
+                Log.v(DevCamActivity.APP_TAG, "nExp: " + mSelectedNexp);
                 checkIfReadyToGenerate();
                 return false;
             }
@@ -345,7 +345,7 @@ public class GenerateDesignFromTemplateActivity extends Activity {
                         mLowEditText.setText("");
                     }
                 }
-                Log.v(appFragment.APP_TAG,"Low bound: " + mSelectedLowBound);
+                Log.v(DevCamActivity.APP_TAG,"Low bound: " + mSelectedLowBound);
                 checkIfReadyToGenerate();
                 return false;
             }
@@ -403,7 +403,7 @@ public class GenerateDesignFromTemplateActivity extends Activity {
                         mHighEditText.setText("");
                     }
                 }
-                Log.v(appFragment.APP_TAG,"High bound: " + mSelectedHighBound);
+                Log.v(DevCamActivity.APP_TAG,"High bound: " + mSelectedHighBound);
                 checkIfReadyToGenerate();
                 return false;
             }
