@@ -25,6 +25,7 @@ import android.util.Size;
 import android.view.Gravity;
 import android.view.Surface;
 import android.view.SurfaceHolder;
+import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
 import android.widget.Toast;
@@ -53,6 +54,8 @@ public class DevCamActivity extends Activity {
 
     protected AutoFitSurfaceView mPreviewSurfaceView;
     private SurfaceHolder mPreviewSurfaceHolder;
+
+    private boolean mSurfaceExists = false;
 
 
     // Camera-related member variables.
@@ -104,6 +107,11 @@ public class DevCamActivity extends Activity {
         @Override
         public void onConfigureFailed(CameraCaptureSession session){
             throw new RuntimeException("CameraCaptureSession configuration fail.");
+        }
+
+        @Override
+        public void onClosed(CameraCaptureSession session){
+            Log.v(APP_TAG,"Capture Session onClosed() called.");
         }
     };
 
@@ -194,12 +202,22 @@ public class DevCamActivity extends Activity {
 
     protected void updateCaptureSession(){
         Log.v(APP_TAG,"updateCaptureSession() called.");
+
         List<Surface> surfaces = addNonPreviewSurfaces();
         surfaces.add(mPreviewSurfaceHolder.getSurface());
         try{
             // Try to create a capture session, with its callback being handled
             // in a background thread.
-            mCamera.createCaptureSession(surfaces,CCSSC,mBackgroundHandler);
+            if (mCamera==null){
+                Log.v(APP_TAG,"CameraDevice not assigned yet! Accessing now.");
+                accessCamera();
+            } else {
+                Log.v(APP_TAG,"Requesting creation of Capture Session.");
+                for (int i=0; i<surfaces.size(); i++){
+                    Log.v(APP_TAG,"Target Surface " + i + " format : " + surfaces.get(i));
+                }
+                mCamera.createCaptureSession(surfaces, CCSSC, mBackgroundHandler);
+            }
         } catch (CameraAccessException cae) {
             // If we couldn't create a capture session, we have trouble. Abort!
             cae.printStackTrace();
@@ -224,6 +242,8 @@ public class DevCamActivity extends Activity {
                 @Override
                 public void surfaceCreated(SurfaceHolder holder){
                     Log.v(APP_TAG,"Preview Surface Created.");
+
+                    mSurfaceExists = true;
                     // Preview Surface has been created, but may not be the desired
                     // size (or even one that is a feasible output for the camera's
                     // output stream). So set it to be feasible and wait.
@@ -283,18 +303,24 @@ public class DevCamActivity extends Activity {
 
                 @Override
                 public void surfaceChanged(SurfaceHolder holder, int format, int width, int height){
-                    // Only try to access the camera once the preview Surface is ready
-                    // to accept an image stream from it.
-                    if ((width==mTargetSize.getWidth())&&(height==mTargetSize.getHeight())){
-                        Log.d(APP_TAG,"Preview Surface set up correctly.");
-                        accessCamera();
-                    }
+                    Log.v(APP_TAG,"Preview SurfaceHolder surfaceChanged() called.");
+
+
+                        // Only try to access the camera once the preview Surface is ready
+                        // to accept an image stream from it.
+                        if ((width == mTargetSize.getWidth()) && (height == mTargetSize.getHeight())) {
+                            Log.d(APP_TAG, "Preview Surface set up correctly.");
+                            accessCamera();
+                        }
+
                 }
 
                 @Override
                 public void surfaceDestroyed(SurfaceHolder holder){
+                    Log.v(APP_TAG,"onSurfaceDestroyed() called.");
+                    mSurfaceExists = false;
                     // If the surface is destroyed, we definitely don't want the camera
-                    // still sending data there, so close it.
+                    // still sending data there, so close it in case it hasn't been closed yet.
                     closeCamera();
 
                 }
@@ -414,6 +440,18 @@ public class DevCamActivity extends Activity {
         // SurfaceHolder.Callback is invoked.
         mPreviewSurfaceHolder = mPreviewSurfaceView.getHolder();
         mPreviewSurfaceHolder.addCallback(mHolderCallback);
+
+        mPreviewSurfaceView.setVisibility(View.VISIBLE);
+
+
+//        // If the surface already exists, the holder callback's onSurfaceChanged() will never be
+//        // called and thus accessCamera() will not either. To keep that chain moving, do so here
+//        // instead.
+//        if (mSurfaceExists) {
+//            Log.v(APP_TAG,"Surface = " +mPreviewSurfaceHolder.getSurface());
+//            Log.v(APP_TAG,"Surface already exists, so trying to access camera directly.");
+//            accessCamera();
+//        }
     }
 
 
@@ -426,12 +464,16 @@ public class DevCamActivity extends Activity {
      */
     private void accessCamera(){
         Log.v(APP_TAG,"accessCamera() called.");
+        if (mCamera!=null){
+            Log.v(APP_TAG,"Camera already aquired. Ignoring call.");
+            return;
+        }
         try {
             if (!mCameraOpenCloseLock.tryAcquire(2500, TimeUnit.MILLISECONDS)) {
                 throw new RuntimeException("Time out waiting to lock camera opening.");
             }
             cm.openCamera(backCamId, CDSC, mBackgroundHandler);
-            Log.v(APP_TAG,"Open camera called successfully.");
+            Log.v(APP_TAG,"Trying to open camera...");
         } catch (CameraAccessException e) {
             e.printStackTrace();
         } catch (InterruptedException e) {
@@ -528,7 +570,9 @@ public class DevCamActivity extends Activity {
             }
             if (null != mPreviewSurfaceHolder){
                 mPreviewSurfaceHolder.removeCallback(mHolderCallback);
+//                mPreviewSurfaceHolder.getSurface().release();///////
                 mPreviewSurfaceHolder = null;
+                Log.v(APP_TAG,"SurfaceHolder set to null.");
             }
 
         } catch (InterruptedException e) {
@@ -589,6 +633,7 @@ public class DevCamActivity extends Activity {
     @Override
     protected void onPause(){
         Log.v(APP_TAG,"onPause() called.");
+        mPreviewSurfaceView.setVisibility(View.GONE);
         closeCamera();
         stopBackgroundThreads();
         super.onPause();
