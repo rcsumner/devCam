@@ -53,10 +53,11 @@ class ImageSaver implements Runnable {
 
 	@Override
 	public void run() {
-		Log.v(DevCamActivity.APP_TAG, "ImageSaver running!");
+		Log.v(DevCamActivity.APP_TAG, "ImageSaver running on image w/timestamp: " + mImage.getTimestamp()/1000);
 
         // Make sure we have a directory to save the image to.
 		if (!(SAVE_DIR.mkdir() || SAVE_DIR.isDirectory())){
+			Log.v(DevCam.APP_TAG,"Could not create/verify image directory " + SAVE_DIR);
             mImage.close(); // make sure buffer is freed
 			return;
 		}
@@ -84,7 +85,7 @@ class ImageSaver implements Runnable {
 			} catch (IOException e) {
 				e.printStackTrace();
 			} finally {
-                Log.v(DevCamActivity.APP_TAG,"Closing image to free buffer.");
+				Log.v(DevCam.APP_TAG,"Freeing buffer of image w/timestamp: " + mImage.getTimestamp()/1000);
                 mImage.close(); // close this to free up buffer for other images
                 if (null != output) {
                     try {
@@ -112,7 +113,7 @@ class ImageSaver implements Runnable {
 			} catch (IOException e) {
 				e.printStackTrace();
 			} finally {
-                Log.v(DevCamActivity.APP_TAG,"Closing image to free buffer.");
+				Log.v(DevCam.APP_TAG,"Freeing buffer of image w/timestamp: " + mImage.getTimestamp()/1000);
                 mImage.close(); // close this to free up buffer for other images
                 if (null != output) {
                     try {
@@ -160,7 +161,7 @@ class ImageSaver implements Runnable {
 			} catch (IOException e) {
 				e.printStackTrace();
 			} finally {
-                Log.v(DevCamActivity.APP_TAG,"Closing image to free buffer.");
+                Log.v(DevCam.APP_TAG,"Freeing buffer of image w/timestamp: " + mImage.getTimestamp()/1000);
                 mImage.close(); // close this to free up buffer for other images
 				if (null != output) {
 					try {
@@ -174,6 +175,9 @@ class ImageSaver implements Runnable {
                 }
 			}
 			break;
+
+			default:
+				Log.v(DevCam.APP_TAG,"ImageSaver: format not recognized.");
 		}
 
 	}

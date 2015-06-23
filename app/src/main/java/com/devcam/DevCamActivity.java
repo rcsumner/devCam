@@ -589,8 +589,7 @@ public class DevCamActivity extends Activity {
         Log.v(APP_TAG,"* * * * * * * * * * * * * * * * * * * * * * * * * * * * * *");
         Log.v(APP_TAG, "DevCamActivity onCreate() called.");
 
-        // Hide the action bar so the activity gets the full screen
-        getActionBar().hide();
+
 
         // Create main app dir if none exists. If it couldn't be created, quit.
         if (!(APP_DIR.mkdir() || APP_DIR.isDirectory())){

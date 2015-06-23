@@ -45,10 +45,14 @@
 
 package com.devcam;
 
+import android.content.Context;
 import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.CaptureResult;
+import android.media.MediaScannerConnection;
+import android.net.Uri;
 import android.util.JsonWriter;
+import android.util.Log;
 
 import java.io.File;
 import java.io.FileNotFoundException;
@@ -714,6 +718,32 @@ final public class CameraReport {
         f = 1/f;
         DecimalFormat df = new DecimalFormat("@@@");
         return df.format(f) + "m";
+    }
+
+
+
+    /* void addFilesToMTP(String[])
+     *
+     * Adds files with full paths indicated in the input string array to be
+     * recognized by the system via the mediascanner.
+     */
+    static public void addFilesToMTP(Context context,String[] filePathsToAdd){
+        MediaScannerConnection.scanFile(context, filePathsToAdd, null,
+                new MediaScannerConnection.OnScanCompletedListener() {
+                    public void onScanCompleted(String path, Uri uri) {
+                        Log.i("ExternalStorage", "Scanned " + path + ":");
+                        Log.i("ExternalStorage", "-> uri=" + uri);
+                    }
+                });
+    }
+
+    /* void addFileToMTP(String)
+     *
+     * Adds a file with full path indicated by input string to be recognized
+     * by the system via the mediascanner.
+     */
+    static public void addFileToMTP(Context context,String file){
+        addFilesToMTP(context, new String[]{file});
     }
 
 }

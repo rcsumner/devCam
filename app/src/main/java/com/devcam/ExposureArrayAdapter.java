@@ -76,7 +76,7 @@ public class ExposureArrayAdapter extends ArrayAdapter<Exposure> {
      */
     @Override
     public View getView(int position, View convertView, ViewGroup parent) {
-       Log.v(DevCamActivity.APP_TAG, "Adapter getView() called");
+//       Log.v(DevCamActivity.APP_TAG, "Adapter getView() called");
         Exposure exp = mDesign.getExposures().get(position); // get the current exposure
 
         // Create a LinearLayout as our base View to have the adapter use for each item.

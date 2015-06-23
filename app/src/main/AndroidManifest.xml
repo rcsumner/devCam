@@ -22,14 +22,22 @@
             android:exported="true">
         </activity>
 
+
+
         <activity
-            android:name=".MainActivity"
+            android:name=".MainDevCamActivity"
             android:label="@string/app_name"
             android:screenOrientation="landscape"
-            android:keepScreenOn="true" >
+            android:keepScreenOn="true"
 
+            android:exported="true">
 
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
         </activity>
+
 
         <activity
             android:name="com.devcam.RemoteCaptureActivity"
@@ -38,10 +46,7 @@
             android:keepScreenOn="true"
             android:exported="true"
             android:launchMode="singleTop">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
+
 
         </activity>
 

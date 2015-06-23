@@ -23,29 +23,31 @@
 
 package com.devcam;
 
-import android.graphics.ImageFormat;
 import android.hardware.camera2.CaptureResult;
 import android.media.Image;
 import android.util.Log;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 public class DesignResult {
 
 	private int mDesignLength;
-	private String mDesignName;
-	private List<CaptureResult> mCaptureResults = new ArrayList<CaptureResult>();
+	private List<CaptureResult> mCaptureResults = new CopyOnWriteArrayList<CaptureResult>();
+//	private Map<Long,CaptureResult> mCaptureResults = new HashMap<Long,CaptureResult>();
 	private List<Long> mCaptureTimestamps = new ArrayList<Long>();
-	private List<Image> mImages = new ArrayList<Image>();
-	private List<String> mFilenames = new ArrayList<String>();
-	private CaptureDesign mDesign;
+	private List<Image> mImages = new CopyOnWriteArrayList<Image>();
+//	private Map<Long,Image> mImages = new HashMap<Long,Image>();
+	private OnCaptureAvailableListener mRegisteredListener;
+    private int mNumAssociated = 0;
 
 	// - - - Constructor - - -
-	public DesignResult(String name, int designLength, CaptureDesign design){
+	public DesignResult(int designLength, OnCaptureAvailableListener listener){
 		mDesignLength = designLength;
-		mDesignName = name;
-		mDesign = design;
+		mRegisteredListener = listener;
 	}
 
 
@@ -58,9 +60,6 @@ public class DesignResult {
 	}
 	public List<CaptureResult> getCaptureResults(){
 		return mCaptureResults;
-	}
-	public List<String> getFilenames(){
-		return mFilenames;
 	}
     public Long getCaptureTimestamp(int i){
         return mCaptureTimestamps.get(i);
@@ -85,18 +84,24 @@ public class DesignResult {
      */
 	public void recordCaptureResult(CaptureResult result){
 		mCaptureResults.add(result);
-		Log.v(DevCamActivity.APP_TAG, mCaptureResults.size() + " CaptureResults Recorded.");
+		//Log.v(DevCamActivity.APP_TAG, mCaptureResults.size() + " CaptureResults Recorded.");
+
 		for (int i=0; i<mImages.size(); i++){
 			Log.v(DevCamActivity.APP_TAG,"Comparing with stored Image " + i);
 			if (mImages.get(i).getTimestamp()==result.get(CaptureResult.SENSOR_TIMESTAMP)){
-				sendImageForWriting(mImages.get(i),result);
+                // Send back to the main Activity.
+                if (null!=mRegisteredListener) {
+                    mRegisteredListener.onCaptureAvailable(mImages.get(i), result);
+                }
 				mImages.remove(i); // remove from List because we can't access this image once it is close()'d by the ImageSaver
-				Log.v(DevCamActivity.APP_TAG,mImages.toString());
+				//Log.v(DevCamActivity.APP_TAG,mImages.toString());
+
+                mNumAssociated++;
 				checkIfComplete();
 				return;
 			}
 		}
-		Log.v(DevCamActivity.APP_TAG,"No existing Image found. Storing for later.");
+		//Log.v(DevCamActivity.APP_TAG,"No existing Image found. Storing for later.");
 	}
 
 
@@ -109,18 +114,25 @@ public class DesignResult {
      * CaptureResult comes in.
      */
 	public void recordImage(Image image){
-		for (CaptureResult result : mCaptureResults){
+
+        for (CaptureResult result : mCaptureResults){
 			if (result.get(CaptureResult.SENSOR_TIMESTAMP)==image.getTimestamp()){
-				sendImageForWriting(image,result);
+
+                // Send back to the main Activity.
+                if (null!=mRegisteredListener) {
+                    mRegisteredListener.onCaptureAvailable(image, result);
+                }
+
+                mNumAssociated++;
 				checkIfComplete();
-				Log.v(DevCamActivity.APP_TAG,"Existing CaptureResult matched to Image. Writing out.");
+				//Log.v(DevCamActivity.APP_TAG,"Existing CaptureResult matched to Image. Writing out.");
 				return;
 			}
 		}
-		
-		// If no associated CaptureResult was found, save the image for later.
-		mImages.add(image);
-		Log.v(DevCamActivity.APP_TAG,"No existing CaptureResult found. Storing for later.");
+
+        // If there was no CaptureResult associated with this image yet, save it until one is.
+        mImages.add(image);
+		//Log.v(DevCamActivity.APP_TAG,"No existing CaptureResult found. Storing for later.");
 	}
 
 
@@ -136,47 +148,20 @@ public class DesignResult {
      */
 
     private void checkIfComplete(){
-        if (mFilenames.size()==mDesignLength){
-            Log.v(DevCamActivity.APP_TAG,"DesignResult: Capture Sequence Complete. Saving results. ");
-            mDesign.getCallback().onFinished(this);
+        if (mNumAssociated==mDesignLength){
+            //Log.v(DevCamActivity.APP_TAG, "DesignResult: Capture Sequence Complete. Saving results. ");
+            if (null!=mRegisteredListener) {
+                mRegisteredListener.onAllCapturesReported(this);
+            }
         }
     }
 
 
 
-    /* void sendImageForWriting(Image, CaptureResult)
-     *
-     * Internal function for prepping to save a frame when both the Image and its associated
-     * CaptureResult have been made available to the DesignResult.
-     *
-     * Generates and records the file name here rather than at the ImageSaver instance so that the
-     * CaptureDesign can have a record of all these names to write out in the output
-     * designName_capture_metadata.json file.
-     *
-     * This function sends the actual Image and CaptureResult back to the main function via the
-     * CaptureDesign's onImageReady(...) callback, so that main Activity can post the ImageSaver
-     * on the appropriate thread and take whatever other actions necessary.
-     */
-	private void sendImageForWriting(Image image, CaptureResult result){
-
-        String fileType = "";
-		switch (image.getFormat()){
-		case ImageFormat.JPEG:
-			fileType = ".jpg";
-			break;
-		case ImageFormat.YUV_420_888:
-			fileType = ".yuv";
-			break;
-		case ImageFormat.RAW_SENSOR:
-			fileType = ".dng";
-			break;
-		}
-
-        // Record the filename for later, with counter based on number already saved.
-		String filename = mDesignName + "-" + (mFilenames.size()+1) + fileType;
-		mFilenames.add(filename);
-
-        // Send back to the main Activity.
-		mDesign.getCallback().onImageReady(image,result, filename);
+	static public abstract class OnCaptureAvailableListener{
+		public void onCaptureAvailable(Image image, CaptureResult result){};
+        public void onAllCapturesReported(DesignResult designResult){};
 	}
-}
+
+
+} // end whole class
