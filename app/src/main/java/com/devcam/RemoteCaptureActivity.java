@@ -5,9 +5,7 @@ import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.ImageFormat;
-import android.hardware.camera2.CameraCaptureSession;
 import android.hardware.camera2.CameraCharacteristics;
-import android.hardware.camera2.CameraDevice;
 import android.hardware.camera2.CaptureResult;
 import android.hardware.camera2.params.StreamConfigurationMap;
 import android.media.Image;
@@ -73,7 +71,7 @@ public class RemoteCaptureActivity extends Activity {
 
     DevCam mDevCam;
 
-    DevCam.StateCallback mDevCamStateCallback = new DevCam.StateCallback() {
+    DevCam.DevCamListener mDevCamStateCallback = new DevCam.DevCamListener() {
         @Override
         void onAutoResultsReady(CaptureResult result) {}
 

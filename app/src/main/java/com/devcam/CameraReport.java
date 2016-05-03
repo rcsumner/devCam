@@ -442,6 +442,8 @@ final public class CameraReport {
                 re.printStackTrace();
                 return "Unknown value " + value ;
             }
+        } else if(value==null){
+            return "Null";  // Catches bad behavior
         } else {
             // contextName is not in constant map, so either it is an array
             // of meaningful values, or is a meaningful value itself.
@@ -517,8 +519,8 @@ final public class CameraReport {
                     Object value = camChars.get(key);
                     String valueString = cameraConstantStringer(name, value);
 
-                        writer.name(name);
-                        writer.value(valueString);
+                    writer.name(name);
+                    writer.value(valueString);
 
                 }
                 writer.endObject();

@@ -249,7 +249,7 @@ public class MainDevCamActivity extends Activity{
 
 
 
-    private DevCam.StateCallback mDevCamCallback = new DevCam.StateCallback() {
+    private DevCam.DevCamListener mDevCamCallback = new DevCam.DevCamListener() {
         @Override
         void onAutoResultsReady(CaptureResult result) {
             mAutoResult = result;
@@ -467,7 +467,8 @@ public class MainDevCamActivity extends Activity{
         super.onCreate(savedInstanceState);
         Log.v(APP_TAG,"* * * * * * * * * * * * * * * * * * * * * * * * * * * * * *");
         Log.v(APP_TAG, "DevCamActivity onCreate() called.");
-
+        Toast.makeText(this,"devCam directory: " + APP_DIR, Toast.LENGTH_LONG).show();
+        Log.v(APP_TAG,"devCam directory: " + APP_DIR);
 
 
         // Create main app dir if none exists. If it couldn't be created, quit.
@@ -726,28 +727,28 @@ public class MainDevCamActivity extends Activity{
 
         Log.v(APP_TAG,"setupButtonsAndViews() called.");
 
-                // Update text fields indicating the time constraints for these settings
-                mOutputStallValueView.setText(CameraReport.nsToString(mStreamMap.getOutputStallDuration(
-                        mOutputFormats.get(mOutputFormatInd), mOutputSizes[mOutputSizeInd])));
-                mMinFrameTimeValueView.setText(CameraReport.nsToString(mStreamMap.getOutputMinFrameDuration(
-                        mOutputFormats.get(mOutputFormatInd), mOutputSizes[mOutputSizeInd])));
-                // Set up our special ArrayAdapter for the List View of Exposures
-                mCaptureDesignAdapter = new ExposureArrayAdapter(mContext, mDesign, mDisplayOptions);
-                mCaptureDesignListView.setAdapter(mCaptureDesignAdapter);
+        // Update text fields indicating the time constraints for these settings
+        mOutputStallValueView.setText(CameraReport.nsToString(mStreamMap.getOutputStallDuration(
+                mOutputFormats.get(mOutputFormatInd), mOutputSizes[mOutputSizeInd])));
+        mMinFrameTimeValueView.setText(CameraReport.nsToString(mStreamMap.getOutputMinFrameDuration(
+                mOutputFormats.get(mOutputFormatInd), mOutputSizes[mOutputSizeInd])));
+        // Set up our special ArrayAdapter for the List View of Exposures
+        mCaptureDesignAdapter = new ExposureArrayAdapter(mContext, mDesign, mDisplayOptions);
+        mCaptureDesignListView.setAdapter(mCaptureDesignAdapter);
 
 
-                mDesignNameEditText = (EditText) findViewById(R.id.designNameEditText);
-                mDesignNameEditText.setOnEditorActionListener(new TextView.OnEditorActionListener() {
+        mDesignNameEditText = (EditText) findViewById(R.id.designNameEditText);
+        mDesignNameEditText.setOnEditorActionListener(new TextView.OnEditorActionListener() {
 
-                    @Override
-                    public boolean onEditorAction(TextView v, int actionId, KeyEvent event) {
-                        if (actionId == EditorInfo.IME_ACTION_DONE) {
-                            mDesign.setDesignName(v.getText().toString());
-                        }
-                        return false;
-                    }
-                });
-                mDesignNameEditText.setText(mDesign.getDesignName());
+            @Override
+            public boolean onEditorAction(TextView v, int actionId, KeyEvent event) {
+                if (actionId == EditorInfo.IME_ACTION_DONE) {
+                    mDesign.setDesignName(v.getText().toString());
+                }
+                return false;
+            }
+        });
+        mDesignNameEditText.setText(mDesign.getDesignName());
 
 
         /* - - - Set up ALL THE BUTTONS! - - -
@@ -761,152 +762,153 @@ public class MainDevCamActivity extends Activity{
 		 * correspond to the arrays of values the return index goes into.
 		 */
 
-                // Set up the settings button
-                mSettingsButton = (Button) findViewById(R.id.settingsButton);
-                mSettingsButton.setOnClickListener(new View.OnClickListener() {
-                    @Override
-                    public void onClick(View v) {
-                        startActivity(new Intent(mContext, SettingsActivity.class));
-                    }
-                });
+        // Set up the settings button
+        mSettingsButton = (Button) findViewById(R.id.settingsButton);
+        mSettingsButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                startActivity(new Intent(mContext, SettingsActivity.class));
+            }
+        });
 
 
-                // Set up output format button
-                mOutputFormatButton = (Button) findViewById(R.id.Button_formatChoice);
-                mOutputFormatButton.setOnClickListener(new View.OnClickListener() {
-                    @Override
-                    public void onClick(View v) {
-                        Intent intent = new Intent(mContext, SelectByLabelActivity.class);
-                        intent.putExtra(SelectByLabelActivity.TAG_DATA_LABELS, mOutputFormatLabels.toArray(new String[mOutputFormatLabels.size()]));
-                        startActivityForResult(intent, OUTPUT_FORMAT);
-                    }
-                });
-                //mOutputFormat = mImageFormats.get(mOutputFormatInd);
-                mOutputFormatButton.setText(CameraReport.cameraConstantStringer("android.graphics.ImageFormat", mOutputFormats.get(mOutputFormatInd)));
+        // Set up output format button
+        mOutputFormatButton = (Button) findViewById(R.id.Button_formatChoice);
+        mOutputFormatButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                Intent intent = new Intent(mContext, SelectByLabelActivity.class);
+                intent.putExtra(SelectByLabelActivity.TAG_DATA_LABELS, mOutputFormatLabels.toArray(new String[mOutputFormatLabels.size()]));
+                startActivityForResult(intent, OUTPUT_FORMAT);
+            }
+        });
+        //mOutputFormat = mImageFormats.get(mOutputFormatInd);
+        mOutputFormatButton.setText(CameraReport.cameraConstantStringer("android.graphics.ImageFormat", mOutputFormats.get(mOutputFormatInd)));
 
 
-                // Set up output size button
-                mOutputSizeButton = (Button) findViewById(R.id.Button_sizeChoice);
-                mOutputSizeButton.setOnClickListener(new View.OnClickListener() {
-                    @Override
-                    public void onClick(View v) {
-                        Intent intent = new Intent(mContext, SelectByLabelActivity.class);
-                        // SelectByLabelActivity takes a string array, so convert these
-                        // Sizes accordingly
-                        String[] temp = new String[mOutputSizes.length];
-                        for (int i = 0; i < mOutputSizes.length; i++) {
-                            temp[i] = mOutputSizes[i].toString();
-                        }
-                        intent.putExtra(SelectByLabelActivity.TAG_DATA_LABELS, temp);
-                        startActivityForResult(intent, OUTPUT_SIZE);
-                    }
-                });
-                mOutputSizeButton.setText(mOutputSizes[mOutputSizeInd].toString());
+        // Set up output size button
+        mOutputSizeButton = (Button) findViewById(R.id.Button_sizeChoice);
+        mOutputSizeButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                Intent intent = new Intent(mContext, SelectByLabelActivity.class);
+                // SelectByLabelActivity takes a string array, so convert these
+                // Sizes accordingly
+                String[] temp = new String[mOutputSizes.length];
+                for (int i = 0; i < mOutputSizes.length; i++) {
+                    temp[i] = mOutputSizes[i].toString();
+                }
+                intent.putExtra(SelectByLabelActivity.TAG_DATA_LABELS, temp);
+                startActivityForResult(intent, OUTPUT_SIZE);
+            }
+        });
+        mOutputSizeButton.setText(mOutputSizes[mOutputSizeInd].toString());
 
 
-                // Set up processing button
-                mProcessingButton = (Button) findViewById(R.id.Button_processingChoice);
-                mProcessingButton.setOnClickListener(new View.OnClickListener() {
-                    @Override
-                    public void onClick(View v) {
-                        Intent intent = new Intent(mContext, SelectByLabelActivity.class);
-                        String[] choices = new String[CaptureDesign.ProcessingChoice.values().length];
-                        for (int i = 0; i < CaptureDesign.ProcessingChoice.values().length; i++) {
-                            choices[i] = CaptureDesign.ProcessingChoice.getChoiceByIndex(i).toString();
-                        }
-                        intent.putExtra(SelectByLabelActivity.TAG_DATA_LABELS, choices);
-                        startActivityForResult(intent, PROCESSING_SETTING);
-                    }
-                });
-                mProcessingButton.setText(mDesign.getProcessingSetting().toString());
+        // Set up processing button
+        mProcessingButton = (Button) findViewById(R.id.Button_processingChoice);
+        mProcessingButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                Intent intent = new Intent(mContext, SelectByLabelActivity.class);
+                String[] choices = new String[CaptureDesign.ProcessingChoice.values().length];
+                for (int i = 0; i < CaptureDesign.ProcessingChoice.values().length; i++) {
+                    choices[i] = CaptureDesign.ProcessingChoice.getChoiceByIndex(i).toString();
+                }
+                intent.putExtra(SelectByLabelActivity.TAG_DATA_LABELS, choices);
+                startActivityForResult(intent, PROCESSING_SETTING);
+            }
+        });
+        mProcessingButton.setText(mDesign.getProcessingSetting().toString());
 
 
-                // Set up Load Design button
-                mLoadDesignButton = (Button) findViewById(R.id.loadDesignButton);
-                mLoadDesignButton.setOnClickListener(new View.OnClickListener() {
-                    @Override
-                    public void onClick(View v) {
-                        // Keep file names around for when selection index comes back
-                        mFileNames = DESIGN_DIR.list();
+        // Set up Load Design button
+        mLoadDesignButton = (Button) findViewById(R.id.loadDesignButton);
+        mLoadDesignButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                // Keep file names around for when selection index comes back
+                mFileNames = DESIGN_DIR.list();
 
-                        if (mFileNames == null || mFileNames.length == 0) {
-                            Toast.makeText(mContext, "No Design JSONs found.", Toast.LENGTH_SHORT).show();
-                            return;
-                        }
+                if (mFileNames == null || mFileNames.length == 0) {
+                    Toast.makeText(mContext, "No Design JSONs found.", Toast.LENGTH_SHORT).show();
+                    return;
+                }
 
-                        Intent intent = new Intent(mContext, SelectByLabelActivity.class);
-                        intent.putExtra(SelectByLabelActivity.TAG_DATA_LABELS, mFileNames);
-                        startActivityForResult(intent, LOAD_DESIGN);
-                    }
-                });
-
-
-                // set up Split Exposures button
-                mSplitAmountButton = (Button) findViewById(R.id.splitAmountButton);
-                mSplitAmountButton.setOnClickListener(new View.OnClickListener() {
-                    @Override
-                    public void onClick(View v) {
-                        Intent intent = new Intent(mContext, GenerateDesignFromTemplateActivity.class);
-                        startActivityForResult(intent, GENERATE_DESIGN);
-                    }
-                });
+                Intent intent = new Intent(mContext, SelectByLabelActivity.class);
+                intent.putExtra(SelectByLabelActivity.TAG_DATA_LABELS, mFileNames);
+                startActivityForResult(intent, LOAD_DESIGN);
+            }
+        });
 
 
-                // Set up the button that actually takes the pictures!
-                mCaptureButton = (Button) findViewById(R.id.take_burst_button);
-                mCaptureButton.setOnClickListener(new View.OnClickListener() {
-                    @Override
-                    public void onClick(View v) {
-                        if (mDesign.getExposures().size() > 0) {
-                            if (mDevCam.isReady()) {
-                                // Turn off the buttons so the user doesn't accidentally mess up capture
-                                setButtonsClickable(false);
-
-                                // Now, tell the CaptureDesign to actually start the capture
-                                // process and hand it the relevant pieces. Note the
-                                // CaptureDesign class actually handles all of the commands to
-                                // the camera.
-
-                                mDesignResult = new DesignResult(mDesign.getExposures().size(),mOnCaptureAvailableListener);
-                                mWrittenFilenames = new ArrayList<String>();
-
-                                // But first, check to see if we should use a delay timer or not.
-                                long delay = (mUseDelay) ? 5000 : 0;
-                                CountDownTimer countDownTimer = new CountDownTimer(delay, 1000) {
-                                    public void onTick(long secondsTillFinish) {
-                                        mCaptureButton.setText((secondsTillFinish / 1000) + " s");
-                                    }
-
-                                    public void onFinish() {
-
-                                        mNumImagesLeftToSave = mDesign.getExposures().size();
+        // set up Split Exposures button
+        mSplitAmountButton = (Button) findViewById(R.id.splitAmountButton);
+        mSplitAmountButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                Intent intent = new Intent(mContext, GenerateDesignFromTemplateActivity.class);
+                startActivityForResult(intent, GENERATE_DESIGN);
+            }
+        });
 
 
-                                        // Make a new CaptureDesign based on the current one, with a new name, so the current
-                                        // results don't get overwritten if button pushed again.
-                                        // Note: Do this first, so when the Variable parameters get fixed during capture, they don't
-                                        // get copied that way.
-                                        mNextDesign = new CaptureDesign(mDesign);
+        // Set up the button that actually takes the pictures!
+        mCaptureButton = (Button) findViewById(R.id.take_burst_button);
+        mCaptureButton.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                if (mDesign.getExposures().size() > 0) {
+                    if (mDevCam.isReady()) {
+                        // Turn off the buttons so the user doesn't accidentally mess up capture
+                        setButtonsClickable(false);
 
-                                        mDevCam.capture(mDesign);
+                        // Now, tell the CaptureDesign to actually start the capture
+                        // process and hand it the relevant pieces. Note the
+                        // CaptureDesign class actually handles all of the commands to
+                        // the camera.
 
+                        mDesignResult = new DesignResult(mDesign.getExposures().size(),mOnCaptureAvailableListener);
+                        Log.v(APP_TAG,"1111mDesignResult allocated.1111");
+                        mWrittenFilenames = new ArrayList<String>();
 
-                                        // inform user sequence is being captured
-                                        mCapturingDesignTextView.setText("Capturing");
-                                        mCapturingDesignTextView.setVisibility(View.VISIBLE);
-
-                                        mCaptureButton.setVisibility(View.INVISIBLE);
-                                        mCaptureButton.setText(R.string.captureText);
-
-                                    }
-                                };
-                                countDownTimer.start();
-                            } else {
-                                Toast.makeText(mContext, "devCam not ready to capture yet.", Toast.LENGTH_SHORT).show();
+                        // But first, check to see if we should use a delay timer or not.
+                        long delay = (mUseDelay) ? 5000 : 0;
+                        CountDownTimer countDownTimer = new CountDownTimer(delay, 1000) {
+                            public void onTick(long secondsTillFinish) {
+                                mCaptureButton.setText((secondsTillFinish / 1000) + " s");
                             }
-                        }
+
+                            public void onFinish() {
+
+                                mNumImagesLeftToSave = mDesign.getExposures().size();
+
+
+                                // Make a new CaptureDesign based on the current one, with a new name, so the current
+                                // results don't get overwritten if button pushed again.
+                                // Note: Do this first, so when the Variable parameters get fixed during capture, they don't
+                                // get copied that way.
+                                mNextDesign = new CaptureDesign(mDesign);
+
+                                mDevCam.capture(mDesign);
+
+
+                                // inform user sequence is being captured
+                                mCapturingDesignTextView.setText("Capturing");
+                                mCapturingDesignTextView.setVisibility(View.VISIBLE);
+
+                                mCaptureButton.setVisibility(View.INVISIBLE);
+                                mCaptureButton.setText(R.string.captureText);
+
+                            }
+                        };
+                        countDownTimer.start();
+                    } else {
+                        Toast.makeText(mContext, "devCam not ready to capture yet.", Toast.LENGTH_SHORT).show();
                     }
-                });
+                }
+            }
+        });
 
 
     }

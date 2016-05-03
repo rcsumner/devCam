@@ -588,7 +588,8 @@ public class DevCamActivity extends Activity {
         super.onCreate(savedInstanceState);
         Log.v(APP_TAG,"* * * * * * * * * * * * * * * * * * * * * * * * * * * * * *");
         Log.v(APP_TAG, "DevCamActivity onCreate() called.");
-
+        Toast.makeText(this,"devCam directory: " + APP_DIR, Toast.LENGTH_LONG).show();
+        Log.v(APP_TAG,"devCam directory: " + APP_DIR);
 
 
         // Create main app dir if none exists. If it couldn't be created, quit.

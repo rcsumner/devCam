@@ -1,6 +1,3 @@
-// NOTE! The surfaces are released every time, so make sure they are re-created and re-added
-// the next time you use the DevCam.
-
 package com.devcam;
 
 import android.content.Context;
@@ -28,6 +25,11 @@ import java.util.List;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 
+/** DevCam class.
+ *
+ * The
+ *
+ */
 final public class DevCam {
 
     // - - - - Class Constants - - - -
@@ -41,26 +43,29 @@ final public class DevCam {
     final static int EMPTY_DESIGN = 106;
     final static int UNKNOWN = 128294;
 
-
+    // Keep track of the asynchronous states involved with establishing a CameraCaptureSession.
     private boolean outstandingSessionRequest;
     private boolean awaitingCaptureSession;
 
+    // Keep track of the single DevCam instance that is allowed
     static private DevCam mInstance = null;
 
     private Context mContext;
-    private StateCallback mRegisteredCallback;
-
-
     private String mBackCamId;
-    private boolean mReadyFlag = false;
 
-    // Camera-related member variables.
+    // Keep track of a callback handler the user must have created.
+    private DevCamListener mRegisteredCallback;
+
+    // Camera-related member variables that the DevCam manages.
     private CameraDevice mCamera;
     private CameraCaptureSession mCaptureSession;
     private CameraCharacteristics mCamChars;
     private CaptureRequest.Builder mPreviewCRB;
 
-
+    // Keep lists of Surfaces to have registered with the DevCam-managed CameraCaptureSession.
+    // Those stored as preview surfaces will get recurring images sent to them, AS WELL AS the
+    // frames involved in a target capture sequence. Those stored as output surfaces will only
+    // receive frames that are specified as part of a CaptureDesign.
     private List<Surface> mPreviewSurfaces = new ArrayList<Surface>();
     private List<Surface> mOutputSurfaces = new ArrayList<Surface>();
 
@@ -69,106 +74,16 @@ final public class DevCam {
     protected Handler mMainHandler;
     private HandlerThread mBackgroundThread;
     private Semaphore mCameraOpenCloseLock = new Semaphore(1);
-    private Semaphore mSessionStartLock = new Semaphore(1);
 
+    // Flags for indicating capabilities of camera hardware the DevCam opens
     private boolean mHasManualSensor = false;
     private boolean mHasPostProcessingControl = false;
+    private boolean mReadyFlag = false; // is the DevCam ready for accepting CaptureDesigns?
+
 
 
     // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-    // - - - - - - - - - Important Callback / Listener objects - - - - - - - -
-
-
-    /* CameraCaptureSession StateCallback, called when the session is started,
-         * giving us access to the reference to the session object.
-         */
-    private CameraCaptureSession.StateCallback CCSSC = new CameraCaptureSession.StateCallback() {
-
-        @Override
-        public void onConfigured(CameraCaptureSession session){
-            Log.v(APP_TAG, "CameraCaptureSession configured correctly.");
-            mCaptureSession = session;
-
-//            Log.v(APP_TAG,"Decreasing session request count to " + --sessionRequestCount);
-            awaitingCaptureSession = false;
-
-            if (outstandingSessionRequest){
-                Log.v(APP_TAG, "Outstanding session request exists (surfaces must have been updated). Re-requesting capture session.");
-                outstandingSessionRequest = false;
-                updateCaptureSession();
-                return;
-            }
-
-            // We now have access to a capture session, so let's use it to
-            // start a recurring preview request
-            if (mCamera!=null) {
-                try {
-
-                    mPreviewCRB = mCamera.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
-                    for (Surface s : mPreviewSurfaces) {
-                        if (!isValidSurface(s)) {
-                            Log.v(APP_TAG, "Surface is not valid for device session.");
-                            return;
-                        }
-                        mPreviewCRB.addTarget(s);
-                    }
-                    mCaptureSession.setRepeatingRequest(mPreviewCRB.build(), previewCCB, mBackgroundHandler);
-                } catch (CameraAccessException cae) {
-                    cae.printStackTrace();
-                    Log.v(APP_TAG, "CameraAccessException when trying to set up preview request.");
-                    mRegisteredCallback.onCameraDeviceError(CAE);
-                }
-
-                // We are now completely ready to start initiating capture sequences. Alert the instantiator.
-                mReadyFlag = true;
-                mRegisteredCallback.onDevCamReady(mHasPostProcessingControl);
-            }
-        }
-
-        @Override
-        public void onConfigureFailed(CameraCaptureSession session){
-            Log.v(APP_TAG,"CameraCaptureSession.StateCallback.onConfigurationFailed() called!");
-//            Log.v(APP_TAG,"Decreasing session request count to " + --sessionRequestCount);
-            awaitingCaptureSession = false;
-
-            if (outstandingSessionRequest){
-                Log.v(APP_TAG, "Outstanding session request exists (surfaces must have been updated). Re-requesting capture session.");
-                outstandingSessionRequest = false;
-                updateCaptureSession();
-                return;
-            }
-
-            mRegisteredCallback.onCameraDeviceError(SESSION_CONFIGURE_FAILED);
-        }
-
-        @Override
-        public void onClosed(CameraCaptureSession session){
-            Log.v(APP_TAG,"Capture Session onClosed() called.");
-        }
-    };
-
-
-
-    /* CaptureCallback for the preview window. This should be going as a
-     * repeating request whenever we are not actively capturing a Design.
-     *
-     * This runs on a background thread and whenever a preview frame is
-     * available, complete with AE/AF results, send the CaptureResult back to
-     * the main thread so that the auto-views on the preview window can be
-     * updated. This allows the user to know what the auto-algorithms suggest
-     * for the current scene, if they care.
-     */
-    private CameraCaptureSession.CaptureCallback previewCCB =
-            new CameraCaptureSession.CaptureCallback() {
-                @Override
-                public void onCaptureCompleted(CameraCaptureSession session,
-                                               CaptureRequest request, TotalCaptureResult result){
-//                    Log.v(APP_TAG,"Preview Image ready!");
-                    // Send the auto values back to the main thread for display
-                    Message msg =  mMainHandler.obtainMessage(AUTO_RESULTS,result);
-                    msg.sendToTarget();
-                }
-            };
+    // - - - - - - - - - Important Camera Lifecycle Callback / Listener object fields - - - - - - -
 
 
 
@@ -217,50 +132,185 @@ final public class DevCam {
     };
 
 
-    private void updateCaptureSession(){
-        Log.v(APP_TAG,"DevCam.updateCaptureSession() called.");
+    /**
+     * This callback object has to do with (un)successful creation of the CameraCaptureSession,
+     * which is associated with both the camera device and the target output Surfaces for captures.
+     * Once the Session is successfully configured the DevCam is ready to use, and informs the user.
+     */
+    private CameraCaptureSession.StateCallback CCSSC = new CameraCaptureSession.StateCallback() {
 
+        @Override
+        public void onConfigured(CameraCaptureSession session){
+            Log.v(APP_TAG, "CameraCaptureSession configured correctly.");
+            mCaptureSession = session; // Keep track of the Session itself for later commands
 
-        if (mCamera==null) {
-            Log.v(APP_TAG,"mCamera==null, waiting for it to be accessed.");
-            return;
-        }
+            // We have successfully finished the configuration, so release the flag holding for that state
+            awaitingCaptureSession = false;
 
-        List<Surface> surfaces = new ArrayList<Surface>();
-        surfaces.addAll(mPreviewSurfaces);
-        surfaces.addAll(mOutputSurfaces);
-
-        for (Surface s : surfaces) {
-            if (!isValidSurface(s)) {
-                Log.v(APP_TAG, "Surface is not valid for device session.");
+            // If new Surfaces were registered with DevCam while the CaptureSession was setting up,
+            // we need to call for creation of a NEW CaptureSession so that the outputs the user
+            // expects to be valid actually are. So instead of reporting that this (now obsolete)
+            // Session is ready, simply prompt for set up of a new Session and let that report back
+            // to the user.
+            if (outstandingSessionRequest){
+                Log.v(APP_TAG, "Outstanding session request exists (surfaces must have been updated). Re-requesting capture session.");
+                outstandingSessionRequest = false;
+                updateCaptureSession();
                 return;
             }
-        }
-        mReadyFlag = false;
 
-        try {
-            Log.v(APP_TAG, "Requesting creation of Capture Session.");
-            awaitingCaptureSession = true;
-//                        Log.v(APP_TAG,"Increasing session request count to " + ++sessionRequestCount);
-            Log.v(APP_TAG, "Surfaces : " + surfaces);
-            for (Surface s : surfaces){
-                Log.v(APP_TAG,"describeContents: " + s.describeContents());
-                Log.v(APP_TAG,"isValid: " + s.isValid());
+            // We now have access to a Session, so let's use it to start a recurring preview request
+            // Camera existence check is necessary in some strange cases, and does no harm.
+            if (mCamera!=null) {
+                try {
+                    // Make sure Preview surfaces are valid, and then start a repeating preview
+                    mPreviewCRB = mCamera.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
+                    for (Surface s : mPreviewSurfaces) {
+                        if (!isValidSurface(s)) {
+                            Log.v(APP_TAG, "Surface is not valid for device session.");
+                            return;
+                        }
+                        mPreviewCRB.addTarget(s);
+                    }
+                    mCaptureSession.setRepeatingRequest(mPreviewCRB.build(), previewCCB, mBackgroundHandler);
+                } catch (CameraAccessException cae) {
+                    cae.printStackTrace();
+                    Log.v(APP_TAG, "CameraAccessException when trying to set up preview request.");
+                    mRegisteredCallback.onCameraDeviceError(CAE);
+                }
+
+                // We are now completely ready to start initiating capture sequences.
+                // Alert the user.
+                mReadyFlag = true;
+                mRegisteredCallback.onDevCamReady(mHasPostProcessingControl);
             }
-            mCamera.createCaptureSession(surfaces, CCSSC, mBackgroundHandler);
-        } catch (CameraAccessException cae) {
-            // If we couldn't create a capture session, we have trouble. Abort!
-            cae.printStackTrace();
-            Log.v(APP_TAG, "CameraAccessException when trying to create capture session.");
-            mRegisteredCallback.onCameraDeviceError(CAE);
         }
 
+        @Override
+        public void onConfigureFailed(CameraCaptureSession session){
+            Log.v(APP_TAG,"CameraCaptureSession.StateCallback.onConfigurationFailed() called!");
+            awaitingCaptureSession = false;
+
+            // Try to create a new session if new Surfaces have been registered
+            if (outstandingSessionRequest){
+                Log.v(APP_TAG, "Outstanding session request exists (surfaces must have been updated). Re-requesting capture session.");
+                outstandingSessionRequest = false;
+                updateCaptureSession();
+                return;
+            }
+
+            mRegisteredCallback.onCameraDeviceError(SESSION_CONFIGURE_FAILED);
+        }
+
+        @Override
+        public void onClosed(CameraCaptureSession session){
+            Log.v(APP_TAG, "Capture Session onClosed() called.");
+        }
+    };
+
+
+
+    /* CaptureCallback for the preview window. This should be going as a
+     * repeating request whenever we are not actively capturing a Design.
+     *
+     * This runs on a background thread and whenever a preview frame is
+     * available, complete with AE/AF results, send the CaptureResult back to
+     * the main thread so that the auto-views on the preview window can be
+     * updated. This allows the user to know what the auto-algorithms suggest
+     * for the current scene, if they care.
+     */
+    private CameraCaptureSession.CaptureCallback previewCCB =
+            new CameraCaptureSession.CaptureCallback() {
+                @Override
+                public void onCaptureCompleted(CameraCaptureSession session,
+                                               CaptureRequest request, TotalCaptureResult result){
+//                    Log.v(APP_TAG,"Preview Image ready!");
+                    // Send the auto values back to the main thread for display
+                    Message msg =  mMainHandler.obtainMessage(AUTO_RESULTS,result);
+                    msg.sendToTarget();
+                }
+            };
+
+
+
+
+
+
+    // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    // - - - - - - - - - - - - - - - - Public-facing API methods - - - - - - - - - - - - - - - - - -
+
+
+    /**
+     *  A DevCamListener must be registered with the DevCam when its instance is created. This
+     *  allows the calling class to be alerted to necessary events in the DevCam lifecycle. These
+     *  include events regarding the DevCam itself, as well as events relating to its output of
+     *  desired capture sequences.
+     */
+    public static abstract class DevCamListener {
+        // Whenever a new frame is ready from the auto-recurring preview (which will be frequently!)
+        // this returns the metadata about that frame to the main Activity, in case it can make
+        // use of it.
+        void onAutoResultsReady(CaptureResult result){};
+
+        // If there is an issue with accessing the CameraDevice or its other related classes for
+        // some reason, this feeds that error forward to the calling Activity so it knows not to
+        // try to use the DevCam.
+        void onCameraDeviceError(int error){
+            Log.v(APP_TAG,"DevCam.StateCallback.onCameraDeviceError() called. Error: " + error);
+        };
+
+        // When the DevCam has established all of its necessary resources, it will inform the caller
+        // via this function that it is ready to accept CaptureRequests. DevCam has been set up to
+        // work without requiring the ability to apply post-processing control, and so this returns
+        // a flag indicating if the camera device has this capability or not. If not, any requests
+        // for post-processing in submitted CaptureDesigns will not throw an error but will simply
+        // be ignored.
+        void onDevCamReady(boolean postProcControl){
+            Log.v(APP_TAG,"DevCam.StateCallback.onDevCamReady() called. Post-processing control?: " + postProcControl);
+        };
+
+        // The following callbacks happen during the capture sequence of a submitted CaptureDesign.
+
+        // When an exposure of the target sequence is started, this is called and supplies the time
+        // stamp identifying the frame. This is usually useful to save in a DesignResult for later.
+        void onCaptureStarted(Long timestamp){
+            Log.v(APP_TAG,"DevCam.StateCallback.onCaptureStarted() called. Timestamp: " + timestamp/1000);
+        };
+
+        // When a capture is completed, successfully or not, one of the following functions is
+        // called
+
+        void onCaptureCompleted(CaptureResult result){
+            Log.v(APP_TAG,"DevCam.StateCallback.OnCaptureCompleted() called. Timestamp: " + result.get(CaptureResult.SENSOR_TIMESTAMP)/1000);
+        };
+
+        void onCaptureFailed(int code){
+            Log.v(APP_TAG,"DevCam.StateCallback.onCaptureFailed() called. Code: " + code);
+        };
+
+        // When the entire sequence of captures associated with a submitted CaptureDesign is
+        // completed- that is, when the last exposure has been completed, NOT when the last image
+        // has been made available- this function alerts the user. The last CaptureResult may or may
+        // not have been returned yet via onCaptureCompleted(), and the last image MAY or may not
+        // have been made available alrady (YUV often will be, other formats not).
+        void onCaptureSequenceCompleted(){
+            Log.v(APP_TAG,"DevCam.StateCallback.onCaptureSequenceCompleted() called.");
+        };
     }
 
 
-
-
-
+    /**
+     * Get the CameraCharacteristics of the camera that DevCam will access.
+     *
+     * <p>Useful for obtaining the size/format output stream combinations the device can provide,
+     * for setting up the output Surfaces before registering them wth the DevCam. This can be called
+     * at any time.</p>
+     *
+     * @param context The Context of the application, usually just the Activity itself.
+     *
+     * @return CameraCharacteristics instance for the camera to be used
+     *
+     */
     static public CameraCharacteristics getCameraCharacteristics(Context context){
         CameraManager cm = (CameraManager) context.getSystemService(Context.CAMERA_SERVICE);
         String backCamId;
@@ -288,150 +338,16 @@ final public class DevCam {
 
 
 
-
-
-
-
-    protected final void restorePreview(){
-        Log.v(APP_TAG,"*internal* DevCam.restorePreview() called.");
-        try{
-            // Stop any repeating requests
-            mCaptureSession.stopRepeating();
-            // Explicitly unlock AE and set AF back to idle, in case last capture design locked them.
-            mPreviewCRB.set(CaptureRequest.CONTROL_AE_LOCK,false);
-            mPreviewCRB.set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_CANCEL);
-            mCaptureSession.capture(mPreviewCRB.build(), previewCCB, mBackgroundHandler);
-
-            // Now let the repeating normal (non-AF-canceling) preview request run.
-            mPreviewCRB.set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_IDLE);
-            mCaptureSession.setRepeatingRequest(mPreviewCRB.build(), previewCCB, mBackgroundHandler);
-        } catch (CameraAccessException cae){
-            cae.printStackTrace();
-            Log.v(APP_TAG, "CameraAccessException when trying to restore preview request.");
-            mRegisteredCallback.onCameraDeviceError(CAE);
-        }
-    }
-
-
-
-    /* void establishThreads()
+    /**
+     * Start the process of establishing the DevCam's connection to the camera device. When this
+     * process is complete, onDevCamReady() will be called and preview images will be sent to the
+     * registered preview Surfaces.
      *
-     * Establishes the resources that need to be set up every time the activity
-     * restarts: threads and their handlers, as well as
+     * <p>The user must provide some preview image target Surfaces with registerPreviewSurfaces()
+     * prior to calling this method. If the camera device does not allow manual sensor control, the
+     * camera access protocol will never begin, and onDevCamReady() will never be called.</p>
      *
      */
-    private void establishThreads(){
-        Log.v(APP_TAG,"*internal* DevCam.establishThreads() called.");
-
-        // Set up a main-thread handler to receive information from the
-        // background thread-based mPreviewCCB object, which sends A3
-        // information back from the continuously generated preview results in
-        // order to update the "auto views", which must be done in main thread.
-        mMainHandler = new Handler(mContext.getMainLooper()){
-            @Override
-            public void handleMessage(Message inputMessage){
-                // If mPreviewCCB sent back some CaptureResults, save them
-                // and update views.
-                if (inputMessage.what == AUTO_RESULTS){
-                    mRegisteredCallback.onAutoResultsReady((CaptureResult) inputMessage.obj);
-                } else {
-                    super.handleMessage(inputMessage);
-                }
-            }
-        };
-
-        // Set up background threads so as not to block the main UI thread.
-        // One for all the camera callbacks.
-        if (null==mBackgroundThread){
-            mBackgroundThread = new HandlerThread("devCam CameraBackground");
-            mBackgroundThread.start();
-            mBackgroundHandler = new Handler(mBackgroundThread.getLooper());
-        }
-    }
-
-
-
-    /* void accessCamera()
-     *
-     * Protected way of trying to open the CameraDevice. Only called once
-     * the preview surface is formatted to the correct size to receive preview
-     * images, since those will be the first thing shown.
-     */
-    private void accessCamera(){
-        Log.v(APP_TAG,"*internal* DevCam.accessCamera() called.");
-
-        if (mCamera!=null){
-            Log.v(APP_TAG,"Camera already aquired. Ignoring call.");
-            return;
-        }
-        CameraManager cm = (CameraManager) mContext.getSystemService(Context.CAMERA_SERVICE);
-
-        try{
-            if (!mCameraOpenCloseLock.tryAcquire(2500, TimeUnit.MILLISECONDS)) {
-                throw new RuntimeException("Time out waiting to lock camera opening.");
-            }
-            cm.openCamera(mBackCamId, CDSC, mBackgroundHandler);
-            Log.v(APP_TAG, "Trying to open camera...");
-        }
-        catch (CameraAccessException cae) {
-            // If we couldn't load the camera, that's a bad sign. Just quit.
-            Log.v(APP_TAG, "Error loading CameraDevice");
-            cae.printStackTrace();
-            mRegisteredCallback.onCameraDeviceError(CAE);
-        } catch (InterruptedException e) {
-            throw new RuntimeException("Interrupted while trying to lock camera opening.", e);
-        }
-    }
-
-
-
-    /* void stopBackgroundThreads()
-         *
-         * When finishing the activity, make sure the threads are quit safely.
-         */
-    private void stopBackgroundThreads() {
-        Log.v(APP_TAG,"*internal* DevCam.stopBackgroundThreads() called.");
-        if (mBackgroundThread!=null){
-            mBackgroundThread.quitSafely();
-            try {
-                mBackgroundThread.join();
-                mBackgroundThread = null;
-                mBackgroundHandler = null;
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
-        }
-    }
-
-
-    /* void closeCamera()
-     *
-     * Safely close the CaptureSession and the CameraDevice.
-     * Called whenever the Activity is paused.
-     */
-    private void closeCamera(){
-        Log.v(APP_TAG,"*internal* DevCam.closeCamera() called.");
-        try {
-            mCameraOpenCloseLock.acquire();
-            if (null != mCaptureSession){
-                mCaptureSession.close();
-                mCaptureSession = null;
-            }
-            if (null != mCamera){
-                mCamera.close();
-                mCamera = null;
-                Log.v(APP_TAG,"mCamera set to null.");
-            }
-
-        } catch (InterruptedException e) {
-            throw new RuntimeException("Interrupted while trying to lock camera closing.", e);
-        } finally {
-            mCameraOpenCloseLock.release();
-        }
-    }
-
-
-
     public void startCam(){
         Log.v(APP_TAG,"DevCam.startCam() called.");
 
@@ -464,6 +380,14 @@ final public class DevCam {
 
 
 
+    /**
+     * Stop the vital processes DevCam commands. Always make sure the DevCam is stopped before the
+     * Activity is paused.
+     *
+     * <p>This stops the threads DevCam created for itself, as well as releases the Surfaces
+     * registered with it, and the CameraDevice itself, so that another app can use it.</p>
+     *
+     */
     public void stopCam(){
         Log.v(APP_TAG,"DevCam.stopCam() called.");
         mReadyFlag = false;
@@ -483,7 +407,17 @@ final public class DevCam {
     }
 
 
-    static DevCam getInstance(Context context,StateCallback callback){
+    /**
+     * Generate and return a DevCam instance for the main Activity to use. DevCam uses a singular-
+     * instance model and future calls to this function will only return the same DevCam reference.
+     *
+     * @param context The Context of the application, typically the Activity itself.
+     * @param callback A DevCam.StateCallback instance to register with the DevCam
+     *
+     * @return A singular instance of a DevCam.
+     *
+     */
+    static public DevCam getInstance(Context context,DevCamListener callback){
         if (mInstance==null){
             mInstance = new DevCam(context,callback);
             Log.v(APP_TAG," * New DevCam instance created! *");
@@ -494,91 +428,35 @@ final public class DevCam {
     }
 
 
-    // - - Constructor - -
-    private DevCam(Context context,StateCallback callback){
-        mContext = context;
-        mRegisteredCallback = callback;
-
-        // Find the ID for the camera we are going to use, but don't try to access it yet.
-        CameraManager cm = (CameraManager) mContext.getSystemService(Context.CAMERA_SERVICE);
-        try {
-            // ASSUMING there is one backward facing camera, and that it is the
-            // device we want to use, find the ID for it and its capabilities.
-            String[] deviceList = cm.getCameraIdList();
-            for (int i=0; i<deviceList.length; i++){
-                mBackCamId = deviceList[i];
-                mCamChars = cm.getCameraCharacteristics(mBackCamId);
-                if (mCamChars.get(CameraCharacteristics.LENS_FACING)
-                        == CameraMetadata.LENS_FACING_BACK){
-                    break;
-                }
-            }
-
-            // Catch inadequate cameras, those which will not allow manual setting of exposure
-            // settings and/or processing settings
-            int[] capabilities = mCamChars.get(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES);
-            for (int i = 0; i<capabilities.length; i++){
-                if (capabilities[i]== CameraMetadata.REQUEST_AVAILABLE_CAPABILITIES_MANUAL_SENSOR){
-                    mHasManualSensor = true;
-                }
-                if (capabilities[i]==CameraMetadata.REQUEST_AVAILABLE_CAPABILITIES_MANUAL_POST_PROCESSING){
-                    mHasPostProcessingControl = true;
-                }
-            }
-            if (!mHasManualSensor){
-                mRegisteredCallback.onCameraDeviceError(INADEQUATE_CAMERA);
-                // SOMETHING ELSE HERE TO MAKE SURE CAMERA ISN'T ACTUALLY USED? Sloppy, fix this
-            }
-        }
-        catch (CameraAccessException cae) {
-            // If we couldn't load the camera, that's a bad sign. Just quit.
-            Log.v(APP_TAG, "Error loading CameraDevice");
-            cae.printStackTrace();
-            mRegisteredCallback.onCameraDeviceError(CAE);
-        }
 
 
-
-
-    }
-
-
-
-
-    public static abstract class StateCallback{
-
-        void onAutoResultsReady(CaptureResult result){};
-        void onCameraDeviceError(int error){
-            Log.v(APP_TAG,"DevCam.StateCallback.onCameraDeviceError() called. Error: " + error);
-        };
-        void onDevCamReady(boolean postProcControl){
-            Log.v(APP_TAG,"DevCam.StateCallback.onDevCamReady() called. Post-processing control?: " + postProcControl);
-        };
-        void onCaptureFailed(int code){
-            Log.v(APP_TAG,"DevCam.StateCallback.onCaptureFailed() called. Code: " + code);
-        };
-
-        void onCaptureStarted(Long timestamp){
-            Log.v(APP_TAG,"DevCam.StateCallback.onCaptureStarted() called. Timestamp: " + timestamp/1000);
-        };
-        void onCaptureCompleted(CaptureResult result){
-            Log.v(APP_TAG,"DevCam.StateCallback.OnCaptureCompleted() called. Timestamp: " + result.get(CaptureResult.SENSOR_TIMESTAMP)/1000);
-        };
-        void onCaptureSequenceCompleted(){
-            Log.v(APP_TAG,"DevCam.StateCallback.onCaptureSequenceCompleted() called.");
-        };
-
-    }
-
-
-
+    /**
+     * Check to see if the DevCam is configured and ready to accept CaptureRequests.
+     *
+     * @return boolean flag indicating readiness
+     *
+     */
     public boolean isReady(){return mReadyFlag;}
 
 
-
+    /**
+     * Provide a list of output Surfaces to receive frame data from every preview image generated
+     * by DevCam. This overrides any previously registered preview target surfaces.
+     *
+     * <p>Note that these preview images will be generated constantly (except during actual DevCam
+     * target capture).</p>
+     * <p>It is the user's responsibility to make sure Surfaces are valid size/format combinations
+     * for this device. Registering new Surfaces will trigger the internal creation of a new
+     * CameraCaptureSession, which will call onDevCamReady() when complete.</p>
+     *
+     * @param surfaces A list of Surfaces set up to receive DevCam output frames
+     *
+     */
     public void registerPreviewSurfaces(List<Surface> surfaces){
         Log.v(APP_TAG,"Registering new Surface with DevCam.");
         mPreviewSurfaces = surfaces;
+        // If a CameraCaptureSession has requested but not yet obtained, wait for that process to
+        // finish before requesting another one. Set a flag instead.
         if (awaitingCaptureSession) {
             outstandingSessionRequest = true;
         } else if (mCamera!=null) {
@@ -586,9 +464,22 @@ final public class DevCam {
         }
     }
 
+    /**
+     * Provide a list of output Surfaces to receive frame data from captures associated with an
+     * input CaptureDesign. This overrides and previously registered output target surfaces.
+     *
+     * <p>It is the user's responsibility to make sure Surfaces are valid size/format combinations
+     * for this device. Registering new Surfaces will trigger the internal creation of a new
+     * CameraCaptureSession, which will call onDevCamReady() when complete.</p>
+     *
+     * @param surfaces A list of Surfaces set up to receive DevCam output frames
+     *
+     */
     public void registerOutputSurfaces(List<Surface> surfaces){
         Log.v(APP_TAG,"Registering new Surface with DevCam.");
         mOutputSurfaces = surfaces;
+        // If a CameraCaptureSession has requested but not yet obtained, wait for that process to
+        // finish before requesting another one. Set a flag instead.
         if (awaitingCaptureSession) {
             outstandingSessionRequest = true;
         } else if (mCamera!=null) {
@@ -597,53 +488,20 @@ final public class DevCam {
     }
 
 
-    private boolean isValidSurface(Surface s){ return s.isValid();}
 
-
-
-
-
-
-    /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -*/
-    /* - - - - - - - - - -  THIS STUFF HAS TO DO WITH THE ACTUAL CAPTURE PROCESS - - - - - - - - -*/
-
-
-    private int mNumCaptured;
-    private CaptureRequest.Builder mCaptureCRB;
-
-    // State variable and possible static values for the auto-focus/exposure state machine
-    private enum AutoState {WAITING_FOR_AF, WAITING_FOR_AE}
-    AutoState state;
-
-    // Flags to indicate which auto-processes are needed.
-    private boolean mNeedsAF;
-    private boolean mNeedsAE;
-
-    private CaptureDesign mDesign;
-
-
-    /* void startCapture(CameraDevice, CameraCaptureSession, output Surface, preview Surface,
-     * Handler, CameraCharacteristics)
+    /**
+     * Begins the process for capturing the desired set of exposures as a burst.
      *
-     * Begins the capture process of the entire CaptureDesign.
-     * The first four arguments are necessary for this class to control the camera device and
-     * properly place the outputs. The last is necessary only for generating explicit Exposure
-     * parameter values if the Exposures in the list have variable parameter values.
+     * <p>You should check isReady() before calling this, but generally after onDevCamReady() is
+     * called, this should be available unless you have recently registered a new output Surface.
      *
-     * If the values of all parameters are already explicitly set, a burst is simply captured.
-     * If any of the Exposures have variables based around "Auto" then this takes a series of
-     * pictures until the camera AF/AE state(s) converge(s). Then it uses this auto-process
-     * CaptureResult to set explicit values in the Exposures, and then captures those as a burst.
+     * The following conditions will cause the capture to fail and onCaptureFailed() to be called:
      *
-     * Rather than using a repeating capture request for these convergence tasks, we use individual
-     * capture commands which recur "manually" if the state isn't converged yet. This gives us more
-     * control over the entire process, so there aren't errant frames going through the camera
-     * device and changing settings at all.
+     * </p>
      *
-     * Note the preview Surface is necessary to catch output of the preparatory frames. Or at least
-     * SOME surface is necessary there.
+     * @param design The sequence of exposures you wish to capture, as a CaptureDesign.
+     *
      */
-
     public void capture(CaptureDesign design){
 
         mDesign = design;
@@ -748,6 +606,285 @@ final public class DevCam {
             mReadyFlag = true;
         }
     }
+
+
+
+
+    // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+    // - - - - - - - - - - - - - - - - Internal methods - - - - - - - - - - - - - - - - - - - - - -
+
+
+
+    /**
+     * DevCam constructor, private to enforce single instance rule. Requires a Context in order to
+     * access CameraManager, and a DevCamListener in order to know where to send relevant
+     * information, since a DevCam cannot exist in a void.
+     *
+     * @param context
+     * @param callback
+     */
+    private DevCam(Context context,DevCamListener callback){
+        mContext = context;
+        mRegisteredCallback = callback;
+
+        // Find the ID for the camera we are going to use, but don't try to access it yet.
+        CameraManager cm = (CameraManager) mContext.getSystemService(Context.CAMERA_SERVICE);
+        try {
+            // ASSUMING there is one backward facing camera, and that it is the
+            // device we want to use, find the ID for it and its capabilities.
+            String[] deviceList = cm.getCameraIdList();
+            for (int i=0; i<deviceList.length; i++){
+                mBackCamId = deviceList[i];
+                mCamChars = cm.getCameraCharacteristics(mBackCamId);
+                if (mCamChars.get(CameraCharacteristics.LENS_FACING)
+                        == CameraMetadata.LENS_FACING_BACK){
+                    break;
+                }
+            }
+
+            // Catch inadequate cameras, those which will not allow manual setting of exposure
+            // settings and/or processing settings
+            int[] capabilities = mCamChars.get(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES);
+            for (int i = 0; i<capabilities.length; i++){
+                if (capabilities[i]== CameraMetadata.REQUEST_AVAILABLE_CAPABILITIES_MANUAL_SENSOR){
+                    mHasManualSensor = true;
+                }
+                if (capabilities[i]==CameraMetadata.REQUEST_AVAILABLE_CAPABILITIES_MANUAL_POST_PROCESSING){
+                    mHasPostProcessingControl = true;
+                }
+            }
+            if (!mHasManualSensor){
+                mRegisteredCallback.onCameraDeviceError(INADEQUATE_CAMERA);
+                // SOMETHING ELSE HERE TO MAKE SURE CAMERA ISN'T ACTUALLY USED? Sloppy, fix this
+            }
+        }
+        catch (CameraAccessException cae) {
+            // If we couldn't load the camera, that's a bad sign. Just quit.
+            Log.v(APP_TAG, "Error loading CameraDevice");
+            cae.printStackTrace();
+            mRegisteredCallback.onCameraDeviceError(CAE);
+        }
+
+    }
+
+
+
+    /**
+     * Starts a repeating capture request with default "preview" settings.
+     *
+     * Assumes there is a registered preview Surface to send outputs to.
+     */
+    private void restorePreview(){
+        Log.v(APP_TAG,"*internal* DevCam.restorePreview() called.");
+        try{
+            // Stop any repeating requests
+            mCaptureSession.stopRepeating();
+            // Explicitly unlock AE and set AF back to idle, in case last capture design locked them.
+            mPreviewCRB.set(CaptureRequest.CONTROL_AE_LOCK,false);
+            mPreviewCRB.set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_CANCEL);
+            mCaptureSession.capture(mPreviewCRB.build(), previewCCB, mBackgroundHandler);
+
+            // Now let the repeating normal (non-AF-canceling) preview request run.
+            mPreviewCRB.set(CaptureRequest.CONTROL_AF_TRIGGER, CaptureRequest.CONTROL_AF_TRIGGER_IDLE);
+            mCaptureSession.setRepeatingRequest(mPreviewCRB.build(), previewCCB, mBackgroundHandler);
+        } catch (CameraAccessException cae){
+            cae.printStackTrace();
+            Log.v(APP_TAG, "CameraAccessException when trying to restore preview request.");
+            mRegisteredCallback.onCameraDeviceError(CAE);
+        }
+    }
+
+
+
+    /**
+     * Establishes the thread resources that need to be set up every time the activity restarts.
+     */
+    private void establishThreads(){
+        Log.v(APP_TAG,"*internal* DevCam.establishThreads() called.");
+
+        // Set up a main-thread handler to receive information from the
+        // background thread-based mPreviewCCB object, which sends A3
+        // information back from the continuously generated preview results in
+        // order to update the "auto views", which must be done in main thread.
+        mMainHandler = new Handler(mContext.getMainLooper()){
+            @Override
+            public void handleMessage(Message inputMessage){
+                // If mPreviewCCB sent back some CaptureResults, save them
+                // and update views.
+                if (inputMessage.what == AUTO_RESULTS){
+                    mRegisteredCallback.onAutoResultsReady((CaptureResult) inputMessage.obj);
+                } else {
+                    super.handleMessage(inputMessage);
+                }
+            }
+        };
+
+        // Set up background threads so as not to block the main UI thread.
+        // One for all the camera callbacks.
+        if (null==mBackgroundThread){
+            mBackgroundThread = new HandlerThread("devCam CameraBackground");
+            mBackgroundThread.start();
+            mBackgroundHandler = new Handler(mBackgroundThread.getLooper());
+        }
+    }
+
+
+
+    /**
+     * Protected way of trying to open the CameraDevice.
+     */
+    private void accessCamera(){
+        Log.v(APP_TAG,"*internal* DevCam.accessCamera() called.");
+
+        if (mCamera!=null){
+            Log.v(APP_TAG, "Camera already aquired. Ignoring call.");
+            return;
+        }
+        CameraManager cm = (CameraManager) mContext.getSystemService(Context.CAMERA_SERVICE);
+
+        try{
+            if (!mCameraOpenCloseLock.tryAcquire(2500, TimeUnit.MILLISECONDS)) {
+                throw new RuntimeException("Time out waiting to lock camera opening.");
+            }
+            cm.openCamera(mBackCamId, CDSC, mBackgroundHandler);
+            Log.v(APP_TAG, "Trying to open camera...");
+        }
+        catch (CameraAccessException cae) {
+            // If we couldn't load the camera, that's a bad sign. Just quit.
+            Log.v(APP_TAG, "Error loading CameraDevice");
+            cae.printStackTrace();
+            mRegisteredCallback.onCameraDeviceError(CAE);
+        } catch (InterruptedException e) {
+            throw new RuntimeException("Interrupted while trying to lock camera opening.", e);
+        }
+    }
+
+
+
+    /**
+     * When finishing the activity, make sure the threads are quit safely.
+     */
+    private void stopBackgroundThreads() {
+        Log.v(APP_TAG,"*internal* DevCam.stopBackgroundThreads() called.");
+        if (mBackgroundThread!=null){
+            mBackgroundThread.quitSafely();
+            try {
+                mBackgroundThread.join();
+                mBackgroundThread = null;
+                mBackgroundHandler = null;
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+
+
+
+    /**
+     * Safely close the camera resources the DevCam is managing.
+     */
+    private void closeCamera(){
+        Log.v(APP_TAG, "*internal* DevCam.closeCamera() called.");
+        try {
+            mCameraOpenCloseLock.acquire();
+            if (null != mCaptureSession){
+                mCaptureSession.close();
+                mCaptureSession = null;
+            }
+            if (null != mCamera){
+                mCamera.close();
+                mCamera = null;
+                Log.v(APP_TAG,"mCamera set to null.");
+            }
+
+        } catch (InterruptedException e) {
+            throw new RuntimeException("Interrupted while trying to lock camera closing.", e);
+        } finally {
+            mCameraOpenCloseLock.release();
+        }
+    }
+
+
+
+    /**
+     * Placeholder function for checking validity of Surfaces for CameraCaptureSession output
+     * targets, since this sometimes causes difficulties.
+     *
+     * @param s Surface to check validity of
+     * @return Validity flag
+     */
+    private boolean isValidSurface(Surface s){ return s.isValid();}
+
+
+
+    /**
+     * Prompt the creation of a new CameraCaptureSession with all of the currently DevCam-registered
+     * Surfaces as output possibilities.
+     *
+     */
+    private void updateCaptureSession(){
+        Log.v(APP_TAG,"DevCam.updateCaptureSession() called.");
+
+        if (mCamera==null) {
+            Log.v(APP_TAG,"mCamera==null, waiting for it to be accessed.");
+            return;
+        }
+
+        // creating a capture session requires a single list of surfaces to be registered
+        List<Surface> surfaces = new ArrayList<Surface>();
+        surfaces.addAll(mPreviewSurfaces);
+        surfaces.addAll(mOutputSurfaces);
+
+        for (Surface s : surfaces) {
+            if (!isValidSurface(s)) {
+                Log.v(APP_TAG, "Surface is not valid for device session.");
+                return;
+            }
+        }
+
+        // Now that we are ready to request creation of a CameraCaptureSession, mark the DevCam as
+        // not ready for operation yet, until the CameraCaptureSession is created or unsuccessful.
+        boolean oldFlag = mReadyFlag; // Keep track of old state in case we need to restore it
+        mReadyFlag = false;
+
+        try {
+            Log.v(APP_TAG, "Requesting creation of Capture Session.");
+            // Let the DevCam know that it is awaiting the asynchronous creation of a Session, in
+            // case new Surfaces get registered before the Session is created. In such a case, the
+            // current Session creation request will resolve, and then immediately prompt the
+            // creation of a NEW CameraCaptureSession with the new Surfaces registered, so that the
+            // user never knows the first Session was created and tries to use it.
+            awaitingCaptureSession = true;
+            mCamera.createCaptureSession(surfaces, CCSSC, mBackgroundHandler);
+        } catch (CameraAccessException cae) {
+            // If we couldn't create a capture session, we have trouble. Abort!
+            cae.printStackTrace();
+            Log.v(APP_TAG, "CameraAccessException when trying to create capture session.");
+            mRegisteredCallback.onCameraDeviceError(CAE);
+            mReadyFlag = oldFlag; // Restore old flag, whatever that was
+        }
+
+    }
+
+
+
+
+    /* - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -*/
+    /* - - - - - - - - - -  THIS STUFF HAS TO DO WITH THE ACTUAL CAPTURE PROCESS - - - - - - - - -*/
+
+
+    private int mNumCaptured;
+    private CaptureRequest.Builder mCaptureCRB;
+
+    // State variable and possible static values for the auto-focus/exposure state machine
+    private enum AutoState {WAITING_FOR_AF, WAITING_FOR_AE}
+    AutoState state;
+
+    // Flags to indicate which auto-processes are needed.
+    private boolean mNeedsAF;
+    private boolean mNeedsAE;
+
+    private CaptureDesign mDesign;
 
 
 
@@ -1018,7 +1155,6 @@ final public class DevCam {
                 captureCleanup();
                 return;
             }
-
         }
 
         @Override
@@ -1049,10 +1185,13 @@ final public class DevCam {
     };
 
 
-
+    /**
+     * Perform clean-up methods to restore standard state of DevCam after a CaptureDesign has been
+     * fully captured.
+     */
     private void captureCleanup(){
         Log.v(APP_TAG,"*internal* DevCam.captureCleanup() called.");
-        mReadyFlag = true;
+        mReadyFlag = true; // The device is now ready for capture again
         mNumCaptured = 0;
         mDesign = null;
         state = null;
@@ -1061,10 +1200,5 @@ final public class DevCam {
 
         restorePreview();
     }
-
-
-
-
-
 
 } // End whole class
