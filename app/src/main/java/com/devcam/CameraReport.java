@@ -106,6 +106,7 @@ final public class CameraReport {
         subMap = new HashMap<Integer,String>();
         subMap.put(0,"IDLE");
         subMap.put(1,"START");
+        subMap.put(2,"CANCEL");
         sContextMap.put("android.control.aePrecaptureTrigger",subMap);
 
         subMap = new HashMap<Integer,String>();
@@ -227,6 +228,7 @@ final public class CameraReport {
         subMap.put(0,"OFF");
         subMap.put(1,"FAST");
         subMap.put(2,"HIGH_QUALITY");
+        subMap.put(3,"ZERO_SHUTTER_LAG");
         sContextMap.put("android.edge.availableEdgeModes",subMap);
         sContextMap.put("android.edge.mode",subMap);
 
@@ -260,6 +262,7 @@ final public class CameraReport {
         subMap = new HashMap<Integer,String>();
         subMap.put(0,"FRONT");
         subMap.put(1,"BACK");
+        subMap.put(2,"EXTERNAL");
         sContextMap.put("android.lens.facing",subMap);
 
         subMap = new HashMap<Integer,String>();
@@ -283,6 +286,8 @@ final public class CameraReport {
         subMap.put(0,"OFF");
         subMap.put(1,"FAST");
         subMap.put(2,"HIGH_QUALITY");
+        subMap.put(3,"MINIMAL");
+        subMap.put(4,"ZERO_SHUTTER_LAG");
         sContextMap.put("android.noiseReduction.availableNoiseReductionModes",subMap);
         sContextMap.put("android.noiseReduction.mode",subMap);
 
@@ -291,8 +296,12 @@ final public class CameraReport {
         subMap.put(1,"MANUAL_SENSOR");
         subMap.put(2,"MANUAL_POST_PROCESSING");
         subMap.put(3,"RAW");
+        subMap.put(4,"PRIVATE_REPROCESSING");
         subMap.put(5,"READ_SENSOR_SETTINGS");
         subMap.put(6,"BURST_CAPTURE");
+        subMap.put(7,"YUV_REPROCESSING");
+        subMap.put(8,"DEPTH_OUTPUT");
+        subMap.put(9,"CONSTRAINED_HIGH_SPEED_VIDEO");
         sContextMap.put("android.request.availableCapabilities",subMap);
 
         subMap = new HashMap<Integer,String>();
@@ -374,8 +383,15 @@ final public class CameraReport {
         subMap.put(0,"CONTRAST_CURVE");
         subMap.put(1,"FAST");
         subMap.put(2,"HIGH_QUALITY");
+        subMap.put(3,"GAMMA_VALUE");
+        subMap.put(4,"PRESET_CURVE");
         sContextMap.put("android.tonemap.availableToneMapModes",subMap);
         sContextMap.put("android.tonemap.mode",subMap);
+
+        subMap = new HashMap<Integer,String>();
+        subMap.put(0,"SRGB");
+        subMap.put(1,"REC709");
+        sContextMap.put("android.tonemap.preset",subMap);
 
         subMap = new HashMap<Integer,String>();
         subMap.put(256,"JPEG");
@@ -384,9 +400,18 @@ final public class CameraReport {
         subMap.put(37,"RAW10");
         subMap.put(32,"RAW_SENSOR");
         subMap.put(4,"RGB_565");
+        subMap.put(34,"PRIVATE");
         subMap.put(35,"YUV_420_888");
+        subMap.put(39,"YUV_422_888");
+        subMap.put(40,"YUV_444_888");
+        subMap.put(38,"RAW12");
         subMap.put(20,"YUY2");
+        subMap.put(41,"FLEX_RGB_888");
+        subMap.put(42,"FLEX_RGBA_8888");
+        subMap.put(257,"DEPTH_POINT_CLOUD");
         subMap.put(842094169,"YV12");
+        subMap.put(1144402265,"DEPTH16");
+
         sContextMap.put("android.graphics.ImageFormat",subMap);
     }
 
